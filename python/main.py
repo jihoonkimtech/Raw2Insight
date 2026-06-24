@@ -1,15 +1,16 @@
+from arduino.app_utils import App, Bridge
 import time
 
-from arduino.app_utils import App
+print("data communication test is start...")
 
-print("Hello world!")
-
-
-def loop():
-    """This function is called repeatedly by the App framework."""
-    # You can replace this with any code you want your App to run repeatedly.
-    time.sleep(10)
-
-
-# See: https://docs.arduino.cc/software/app-lab/tutorials/getting-started/#app-run
-App.run(user_loop=loop)
+while True:
+    try:
+        # call function
+        sensor_value = Bridge.call("get_sensor_data")
+        
+        print(f"received : {sensor_value}")
+        
+    except Exception as e:
+        print(f"error occur : {e}")
+        
+    time.sleep(0.5)
