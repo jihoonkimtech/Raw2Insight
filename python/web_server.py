@@ -12,8 +12,23 @@ from arduino.app_bricks.web_ui import WebUI
 class WebServer:
     def __init__(self):
         # init web server instance
+        print("[DEBUG] [WebServer] Initializing WebUI module...")
         self.ui = WebUI()
+
+        # register event handlers for incoming messages from frontend
+        self.ui.on_message('client_ready', self.on_client_ready)
+        self.ui.on_message('request_update', self.on_request_update)
+        print("[DEBUG] [WebServer] WebUI successfully started. Listening on port 7000.")
 
     def broadcast_table(self, rows):
         # data transit to frontend
+        print(f"[DEBUG] [WebServer] Broadcasting {len(rows)} rows to frontend UI...")
         self.ui.send_message('update_table', rows)
+
+    def on_client_ready(self, data):
+        # triggered when a user opens the browser
+        print("[DEBUG] [WebServer] EVENT: New web client connected to the dashboard!")
+
+    def on_request_update(self, data):
+        # triggered when a user manually requests data
+        print("[DEBUG] [WebServer] EVENT: Client manually requested an update.")

@@ -21,7 +21,14 @@ db = DBManager()
 comm = CommManager()
 web = WebServer()
 
+# cycle count for debug
+cycle_count = 0
+
 def loop():
+    global cycle_count
+    cycle_count += 1
+    print(f"\n--- [Main] Cycle #{cycle_count} Start ---")
+    
     try:
         # receive sensor data using communication manager
         sensor_val = comm.read_sensor()
@@ -35,12 +42,13 @@ def loop():
         # refresh dashboard using latest rows with Web Server Manager
         web.broadcast_table(latest_rows)
         
-        print(f"[Main] Processing Complete | Sensor: {sensor_val}")
+        print(f"--- [Main] Cycle #{cycle_count} Completed ---")
         
     except Exception as e:
-        print(f"Error occur in main loop : {e}")
+        print(f"[ERROR] [Main] Error occur in main loop : {e}")
         
     time.sleep(1)
 
 # run application
+print("[DEBUG] [Main] Handing over execution to App.run()...")
 App.run(user_loop=loop)
