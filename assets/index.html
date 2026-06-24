@@ -1,0 +1,41 @@
+<!--
+===================================================================
+Author/Maker : jihoonkimtech
+Project      : Raw2Insight
+File         : index.html
+Purpose      : Web dashboard for insight datas
+===================================================================
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple DB Viewer</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        table { border-collapse: collapse; width: 300px; text-align: center; }
+        th, td { border: 1px solid black; padding: 8px; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h2>Real-time DB Viewer</h2>
+    <table id="dataTable">
+        <tr><th>Time</th><th>Sensor Value</th></tr>
+        </table>
+
+    <script>
+        const socket = io(); // init Web socket
+
+        // run if 'update_table' message is received
+        socket.on('update_table', function(rows) {
+            let tableHTML = "<tr><th>Time</th><th>Sensor Value</th></tr>";
+            // DB rows data converted into HTML table
+            rows.forEach(row => {
+                tableHTML += `<tr><td>${row[0]}</td><td>${row[1]}</td></tr>`;
+            });
+            document.getElementById('dataTable').innerHTML = tableHTML;
+        });
+    </script>
+</body>
+</html>

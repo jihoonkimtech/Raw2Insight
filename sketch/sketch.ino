@@ -1,3 +1,11 @@
+/*
+===================================================================
+Author/Maker : jihoonkimtech
+Project      : Raw2Insight
+File         : sketch.ino
+Purpose      : Hardware interface for sensors and actuators
+===================================================================
+*/
 #include "Arduino_RouterBridge.h"
 
 int dummySensorValue = 0;

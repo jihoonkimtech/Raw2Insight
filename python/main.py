@@ -1,46 +1,46 @@
-import sqlite3
+"""
+===================================================================
+Author/Maker : jihoonkimtech
+Project      : Raw2Insight
+File         : main.py
+Purpose      : Main orchestrator coordinating DB, Comm, and Web
+===================================================================
+"""
 import time
-from datetime import datetime
-from arduino.app_utils import App, Bridge 
+from arduino.app_utils import App
 
-print("receive and store sensor data test start ...")
+# load custom modules
+from db_manager import DBManager
+from comm_manager import CommManager
+from web_server import WebServer
 
-# sensor_data.db' creation
-db_conn = sqlite3.connect('sensor_data.db', check_same_thread=False)
-cursor = db_conn.cursor()
+print("Raw2Insight System Starting...")
 
-# table creation
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS sensor_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp DATETIME,
-        sensor_value INTEGER
-    )
-''')
-db_conn.commit()
-print("DB and TABLE ready! \n")
+# create instance of custom modules
+db = DBManager()
+comm = CommManager()
+web = WebServer()
 
 def loop():
     try:
-        # read data
-        sensor_val = Bridge.call("get_sensor_data")
-
-        # make timestamp
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # receive sensor data using communication manager
+        sensor_val = comm.read_sensor()
         
-        # row creation
-        cursor.execute(
-            "INSERT INTO sensor_logs (timestamp, sensor_value) VALUES (?, ?)", 
-            (current_time, sensor_val)
-        )
-        db_conn.commit() # commit data
+        # store data using DB manager
+        db.insert_data(sensor_val)
         
-        print(f"[stored] time: {current_time} | value: {sensor_val}")
+        # load 5 latest datas from DB
+        latest_rows = db.get_latest_data()
+        
+        # refresh dashboard using latest rows with Web Server Manager
+        web.broadcast_table(latest_rows)
+        
+        print(f"[Main] Processing Complete | Sensor: {sensor_val}")
         
     except Exception as e:
-        print(f"error occur : {e}")
+        print(f"Error occur in main loop : {e}")
         
     time.sleep(1)
-    
-# run in background
+
+# run application
 App.run(user_loop=loop)
