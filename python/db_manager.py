@@ -41,7 +41,7 @@ class DBManager:
         print(f"[DEBUG] [DBManager] Inserted TimeSeries Row -> Value: {value}")
         return value
 
-    def get_latest_data(self, limit=5):
+    def get_latest_data(self, limit=15):
         
         print(f"[DEBUG] [DBManager] Fetching latest {limit} records from InfluxDB...")
         try:

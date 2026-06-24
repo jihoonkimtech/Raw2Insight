@@ -11,7 +11,7 @@ Purpose      : Hardware interface for sensors and actuators
 int dummySensorValue = 0;
 
 int get_sensor_data() {
-  dummySensorValue = (dummySensorValue + 1) % 100;
+  dummySensorValue = random(1,1024);
   return dummySensorValue;
 }
 

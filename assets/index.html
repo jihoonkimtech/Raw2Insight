@@ -3,38 +3,90 @@
 Author/Maker : jihoonkimtech
 Project      : Raw2Insight
 File         : index.html
-Purpose      : Web dashboard for insight datas
+Purpose      : Web dashboard for insight data
 ===================================================================
 -->
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Simple DB Viewer</title>
+    <title>Raw2Insight Dashboard</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: Arial; padding: 20px; }
-        table { border-collapse: collapse; width: 300px; text-align: center; }
-        th, td { border: 1px solid black; padding: 8px; }
-        th { background-color: #f2f2f2; }
+        body { font-family: Arial, sans-serif; padding: 20px; background-color: #fdfdfd; }
+        .header { color: #333; margin-bottom: 20px; }
+        .container { max-width: 600px; }
+        table { border-collapse: collapse; width: 100%; text-align: center; margin-bottom: 30px; }
+        th, td { border: 1px solid #ccc; padding: 10px; }
+        th { background-color: #f8f9fa; }
+        .chart-container { position: relative; width: 100%; height: 300px; }
     </style>
 </head>
 <body>
-    <h2>Real-time DB Viewer</h2>
-    <table id="dataTable">
-        <tr><th>Time</th><th>Sensor Value</th></tr>
+    <div class="container">
+        <div class="header">
+            <h2>Raw2Insight Sensor Dashboard</h2>
+            <p>Real-time data streaming & time-series visualization</p>
+        </div>
+        
+        <table id="dataTable">
+            <tr><th>Time</th><th>Sensor Value</th></tr>
         </table>
 
-    <script>
-        const socket = io(); // init Web socket
+        <div class="chart-container">
+            <canvas id="sensorChart"></canvas>
+        </div>
+    </div>
 
-        // run if 'update_table' message is received
+    <script>
+        const socket = io();
+        
+        // initialize chart.js configuration
+        const ctx = document.getElementById('sensorChart').getContext('2d');
+        const sensorChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // timestamps
+                datasets: [{
+                    label: 'Real-time Sensor Data',
+                    data: [], // sensor values
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        // notify backend upon successful connection
+        socket.on('connect', () => {
+            socket.emit('client_ready', { status: "connected" });
+        });
+
+        // handle real-time data update event
         socket.on('update_table', function(rows) {
+            // update data table UI (shows latest on top)
             let tableHTML = "<tr><th>Time</th><th>Sensor Value</th></tr>";
-            // DB rows data converted into HTML table
             rows.forEach(row => {
                 tableHTML += `<tr><td>${row[0]}</td><td>${row[1]}</td></tr>`;
             });
             document.getElementById('dataTable').innerHTML = tableHTML;
+
+            // process data for the chart (requires chronological order: oldest to newest)
+            const chartRows = [...rows].reverse();
+            const labels = chartRows.map(row => row[0]);
+            const values = chartRows.map(row => row[1]);
+
+            // update chart dataset and re-render
+            sensorChart.data.labels = labels;
+            sensorChart.data.datasets[0].data = values;
+            sensorChart.update();
         });
     </script>
 </body>
