@@ -3,19 +3,21 @@
 Author/Maker : jihoonkimtech
 Project      : Raw2Insight
 File         : db_manager.py
-Purpose      : Manage SQLite database connection and queries
+Purpose      : Manage InfluxDB database connection and queries
 ===================================================================
 """
-import sqlite3
-from datetime import datetime
+import time
+from arduino.app_bricks.dbstorage_tsstore import TimeSeriesStore
 
 class DBManager:
     def __init__(self, db_name='sensor_data.db'):
         # init db connection
-        print(f"[DEBUG] [DBManager] Connecting to database: {db_name}...")
-        self.conn = sqlite3.connect(db_name, check_same_thread=False)
-        self.cursor = self.conn.cursor()
-        self.init_db()
+        print("[DEBUG] [DBManager] Connecting to InfluxDB TimeSeriesStore...")
+        self.ts_store = TimeSeriesStore(host="dbstorage-influx", port=8086, retention_days=7)
+        
+        # setting data grouping name
+        self.measurement_name = "arduino"
+        self.field_name = "sensor_value"
 
     def init_db(self):
         # table creation
@@ -31,17 +33,37 @@ class DBManager:
 
     def insert_data(self, value):
         # store date with timestamp
-        current_time = datetime.now().strftime('%H:%M:%S')
-        self.cursor.execute(
-            "INSERT INTO sensor_logs (timestamp, sensor_value) VALUES (?, ?)", 
-            (current_time, value)
+        self.ts_store.write_sample(
+            measure=self.field_name, 
+            value=value, 
+            measurement_name=self.measurement_name
         )
-        self.conn.commit()
-        print(f"[DEBUG] [DBManager] Inserted Row -> Time: {current_time}, Value: {value}")
-        return current_time
+        print(f"[DEBUG] [DBManager] Inserted TimeSeries Row -> Value: {value}")
+        return value
 
     def get_latest_data(self, limit=5):
-        # load N latest data from DB
-        print(f"[DEBUG] [DBManager] Fetching latest {limit} records from DB...")
-        self.cursor.execute("SELECT timestamp, sensor_value FROM sensor_logs ORDER BY id DESC LIMIT ?", (limit,))
-        return self.cursor.fetchall()
+        
+        print(f"[DEBUG] [DBManager] Fetching latest {limit} records from InfluxDB...")
+        try:
+            # load N latest data from DB (in 1 hour)
+            samples = self.ts_store.read_samples(
+                measure=self.field_name,
+                measurement_name=self.measurement_name,
+                start_from="-1h",
+                limit=limit,
+                order="desc" 
+            )
+            
+            # transform to [time, value] for web display
+            formatted_rows = []
+            for sample in samples:
+                field_name, ts_iso, val = sample
+                # transform 2026-06-24T11:35:12Z to 11:35:12
+                time_only = ts_iso.split('T')[1][:8] if 'T' in ts_iso else ts_iso
+                formatted_rows.append([time_only, val])
+            
+            return formatted_rows
+            
+        except Exception as e:
+            print(f"[DEBUG] [DBManager] Error reading timeseries samples: {e}")
+            return []
