@@ -1,5 +1,6 @@
 name: Raw2Insight
 description: ""
 ports: []
-bricks: []
+bricks:
+- arduino:web_ui: {}
 icon: 📊
