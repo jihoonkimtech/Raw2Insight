@@ -20,7 +20,7 @@ print("Raw2Insight System Starting...")
 # create instance of custom modules
 db = DBManager()
 comm = CommManager()
-web = WebServer()
+web = WebServer(db)
 ai = AIManager()
 
 # cycle count for debug

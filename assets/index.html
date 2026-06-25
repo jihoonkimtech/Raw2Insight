@@ -1,11 +1,3 @@
-<!--
-===================================================================
-Author/Maker : jihoonkimtech
-Project      : Raw2Insight
-File         : index.html
-Purpose      : ML Dashboard with Aggregation & Anomaly Alerts
-===================================================================
--->
 <!DOCTYPE html>
 <html>
 <head>
@@ -17,18 +9,44 @@ Purpose      : ML Dashboard with Aggregation & Anomaly Alerts
         .container { max-width: 700px; margin: auto; }
         .header { display: flex; justify-content: space-between; align-items: center; }
         
-        /* AI Status Badge */
         .status-badge { padding: 10px 20px; border-radius: 5px; font-weight: bold; color: white; }
         .status-safe { background-color: #28a745; }
         .status-alert { background-color: #dc3545; animation: blink 1s infinite; }
         
         table { border-collapse: collapse; width: 100%; text-align: center; margin-top: 20px; }
-        th, td { border: 1px solid #ccc; padding: 8px; }
+        th, td { border: 1px solid #ccc; padding: 8px; vertical-align: middle; }
         th { background-color: #f8f9fa; }
         .chart-container { position: relative; width: 100%; height: 300px; margin-top: 20px; }
 
         @keyframes blink { 50% { opacity: 0.5; } }
         .alert-bg { background-color: #ffe6e6; }
+
+        /* device management panel */
+        .device-panel { background: #f8f9fa; padding: 20px; margin-top: 30px; border-radius: 8px; border: 1px solid #ddd; }
+        .device-panel h3 { margin-top: 0; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
+        .device-panel h4 { margin-bottom: 10px; color: #333; }
+        .flex-row { display: flex; gap: 20px; flex-wrap: wrap; }
+        .flex-col { flex: 1; min-width: 300px; background: #fff; padding: 15px; border-radius: 5px; border: 1px solid #eee; }
+        .form-group { margin-bottom: 15px; }
+        
+        .form-group input, .form-group select { 
+            padding: 8px; 
+            width: 100%; 
+            box-sizing: border-box;
+            margin-top: 5px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px;
+            height: 36px;
+        }
+        
+        .form-row-inner { display: flex; gap: 10px; width: 100%; }
+        .form-row-inner > div { flex: 1; }
+
+        .form-btn { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; }
+        .form-btn:hover { background-color: #0056b3; }
+        
+        .delete-btn { background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
+        .delete-btn:hover { background-color: #c82333; }
     </style>
 </head>
 <body>
@@ -48,6 +66,70 @@ Purpose      : ML Dashboard with Aggregation & Anomaly Alerts
         <table id="dataTable">
             <tr><th>시간 (Aggregated Time)</th><th>2초 평균 값 (Mean Value)</th></tr>
         </table>
+
+        <div class="device-panel">
+            <h3>⚙️ 동적 장치 관리자 (Device Router)</h3>
+            <div class="flex-row">
+                <div class="flex-col">
+                    <h4>📡 입력 장치 (Sensor) 등록</h4>
+                    <div class="form-group">
+                        <input type="text" id="sen-name" placeholder="기기 이름 (예: Main_Temp)">
+                    </div>
+                    <div class="form-group">
+                        <select id="sen-protocol" onchange="updateSensorPinOptions()">
+                            <option value="analog">Analog (아날로그)</option>
+                            <option value="digital">Digital (디지털)</option>
+                            <option value="i2c">I2C (버스 통신)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <select id="sen-pin-select"></select>
+                        <input type="text" id="sen-pin-input" placeholder="I2C 주소 (예: 0x68)" style="display:none;">
+                    </div>
+                    <button class="form-btn" onclick="submitSensor()">센서 추가</button>
+                </div>
+
+                <div class="flex-col">
+                    <h4>⚡ 출력 장치 (Actuator) 등록</h4>
+                    <div class="form-group">
+                        <input type="text" id="act-name" placeholder="기기 이름 (예: Emergency_Fan)">
+                    </div>
+                    <div class="form-group">
+                        <select id="act-type" onchange="updateActuatorPinOptions()">
+                            <option value="digital_out">일반 디지털 출력</option>
+                            <option value="pwm">PWM (속도/밝기 제어)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <select id="act-pin"></select>
+                    </div>
+                    <div class="form-group form-row-inner">
+                        <div>
+                            <input type="number" id="act-trigger" placeholder="이상 시 출력 (0~255)">
+                        </div>
+                        <div>
+                            <select id="act-link">
+                                <option value="">연동 센서 선택...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="form-btn" onclick="submitActuator()">기기 추가</button>
+                </div>
+            </div>
+        </div>
+      <div class="device-panel" style="margin-top: 20px;">
+            <h3>📋 등록된 기기 목록 (Device DB List)</h3>
+            
+            <h4>입력 장치 (Sensors)</h4>
+            <table id="sensorListTable">
+                <tr><th>ID</th><th>이름</th><th>프로토콜</th><th>핀/주소</th><th>관리</th></tr>
+            </table>
+
+            <h4 style="margin-top: 20px;">출력 장치 (Actuators)</h4>
+            <table id="actuatorListTable">
+                <tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀</th><th>동작값</th><th>연동 센서 ID</th><th>관리</th></tr>
+            </table>
+      </div>
     </div>
 
     <script>
@@ -81,7 +163,6 @@ Purpose      : ML Dashboard with Aggregation & Anomaly Alerts
             const rows = payload.rows;
             const isAnomaly = payload.alert;
 
-            // update Alert UI
             if (isAnomaly) {
                 document.body.classList.add('alert-bg');
                 aiStatusBadge.className = 'status-badge status-alert';
@@ -96,18 +177,171 @@ Purpose      : ML Dashboard with Aggregation & Anomaly Alerts
                 sensorChart.data.datasets[0].backgroundColor = 'rgba(0, 123, 255, 0.2)';
             }
 
-            // update Table
             let tableHTML = "<tr><th>시간 (Aggregated Time)</th><th>2초 평균 값 (Mean Value)</th></tr>";
-            rows.slice(0, 5).forEach(row => { // display only latest 5 in table
+            rows.slice(0, 5).forEach(row => { 
                 tableHTML += `<tr><td>${row[0]}</td><td>${row[1]}</td></tr>`;
             });
             document.getElementById('dataTable').innerHTML = tableHTML;
 
-            // update Chart (Chronological order)
             const chartRows = [...rows].reverse();
             sensorChart.data.labels = chartRows.map(row => row[0]);
             sensorChart.data.datasets[0].data = chartRows.map(row => row[1]);
             sensorChart.update();
+        });
+
+        // Device Management
+        const actPinMap = {
+            'digital_out': ['7', '8', '12', '13'],
+            'pwm': ['3', '5', '6', '9', '10', '11'] 
+        };
+        const senPinMap = {
+            'analog': ['A0', 'A1', 'A2', 'A3'],
+            'digital': ['2', '4']
+        };
+
+        function updateActuatorPinOptions() {
+            const type = document.getElementById('act-type').value;
+            const pinSelect = document.getElementById('act-pin');
+            pinSelect.innerHTML = ''; 
+            
+            actPinMap[type].forEach(pin => {
+                const option = document.createElement('option');
+                option.value = pin;
+                option.text = `Pin ${pin}${type === 'pwm' ? ' (~)' : ''}`;
+                pinSelect.appendChild(option);
+            });
+        }
+
+        function updateSensorPinOptions() {
+            const protocol = document.getElementById('sen-protocol').value;
+            const pinSelect = document.getElementById('sen-pin-select');
+            const pinInput = document.getElementById('sen-pin-input');
+            
+            if (protocol === 'analog') {
+                pinSelect.style.display = 'block';
+                pinInput.style.display = 'none';
+                pinSelect.innerHTML = '';
+                senPinMap[protocol].forEach(pin => {
+                    const option = document.createElement('option');
+                    option.value = pin;
+                    option.text = `Pin ${pin}`;
+                    pinSelect.appendChild(option);
+                });
+            } else if (protocol === 'digital') {
+                pinSelect.style.display = 'block';
+                pinInput.style.display = 'none';
+                pinSelect.innerHTML = '';
+                senPinMap[protocol].forEach(pin => {
+                    const option = document.createElement('option');
+                    option.value = pin;
+                    option.text = `Pin D${pin}`;
+                    pinSelect.appendChild(option);
+                });
+            } else {
+                pinSelect.style.display = 'none';
+                pinInput.style.display = 'block';
+            }
+        }
+
+        function submitSensor() {
+            const protocol = document.getElementById('sen-protocol').value;
+            const pin = (protocol === 'analog' || protocol === 'digital') ? document.getElementById('sen-pin-select').value : document.getElementById('sen-pin-input').value;
+            
+            if(!document.getElementById('sen-name').value) {
+                alert("센서 이름을 입력하세요."); return;
+            }
+
+            const data = {
+                name: document.getElementById('sen-name').value,
+                protocol: protocol,
+                pin: pin
+            };
+            socket.emit('add_sensor_request', data);
+            
+            document.getElementById('sen-name').value = '';
+            if(protocol === 'i2c') document.getElementById('sen-pin-input').value = '';
+        }
+
+        function submitActuator() {
+            const name = document.getElementById('act-name').value;
+            const triggerLogic = document.getElementById('act-trigger').value;
+            const linkedId = document.getElementById('act-link').value;
+
+            if(!name || triggerLogic === '' || linkedId === '') {
+                alert("모든 필드를 정확히 입력하세요. (연동 센서 선택 필수)"); return;
+            }
+
+            const data = {
+                name: name,
+                control_type: document.getElementById('act-type').value,
+                pin: document.getElementById('act-pin').value,
+                trigger_logic: parseInt(triggerLogic),
+                linked_sensor_id: parseInt(linkedId)
+            };
+            socket.emit('add_actuator_request', data);
+            
+            document.getElementById('act-name').value = '';
+            document.getElementById('act-trigger').value = '';
+            document.getElementById('act-link').value = '';
+        }
+
+        // delete registered sensor from DB
+        function deleteDevice(type, id) {
+            if(confirm(`정말 이 ${type === 'sensor' ? '센서' : '액추에이터'}를 삭제하시겠습니까?`)) {
+                socket.emit('delete_device_request', { type: type, id: id });
+            }
+        }
+
+        window.onload = () => {
+            updateActuatorPinOptions();
+            updateSensorPinOptions();
+            socket.emit('request_device_list', {}); 
+        };
+
+        socket.on('device_list_updated', function(data) {
+            console.log("Device DB updated:", data.type);
+            socket.emit('request_device_list', {}); 
+        });
+
+        socket.on('update_device_list', function(payload) {
+            const sensors = payload.sensors || [];
+            const actuators = payload.actuators || [];
+
+            // render sensor list
+            let senTableHTML = "<tr><th>ID</th><th>이름</th><th>프로토콜</th><th>핀/주소</th><th>관리</th></tr>";
+            // fill sensor list
+            let linkOptionsHTML = '<option value="">연동 센서 선택...</option>';
+            
+            sensors.forEach(sen => {
+                // render table
+                senTableHTML += `<tr>
+                    <td>${sen.id}</td>
+                    <td>${sen.name}</td>
+                    <td>${sen.protocol}</td>
+                    <td>${sen.pin}</td>
+                    <td><button class="delete-btn" onclick="deleteDevice('sensor', ${sen.id})">❌ 삭제</button></td>
+                </tr>`;
+                
+                // render drop-down list
+                linkOptionsHTML += `<option value="${sen.id}">${sen.name} (ID: ${sen.id})</option>`;
+            });
+            document.getElementById('sensorListTable').innerHTML = senTableHTML;
+            document.getElementById('act-link').innerHTML = linkOptionsHTML;
+
+            // render actuator list
+            let actTableHTML = "<tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀</th><th>동작값</th><th>연동 센서 ID</th><th>관리</th></tr>";
+            actuators.forEach(act => {
+                actTableHTML += `<tr>
+                    <td>${act.id}</td>
+                    <td>${act.name}</td>
+                    <td>${act.control_type}</td>
+                    <td>${act.pin}</td>
+                    <td>${act.trigger_logic}</td>
+                    <td>${act.linked_sensor_id}</td>
+                    <td><button class="delete-btn" onclick="deleteDevice('actuator', ${act.id})">❌ 삭제</button></td>
+                </tr>`;
+            });
+            document.getElementById('actuatorListTable').innerHTML = actTableHTML;
         });
     </script>
 </body>
