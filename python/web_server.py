@@ -52,6 +52,10 @@ class WebServer:
         # data transit to frontend
         print(f"[DEBUG] [WebServer] Broadcasting {len(rows)} rows to frontend UI...")
         self.ui.send_message('update_table', rows)
+        
+    def broadcast_multi_data(self, payload_dict):
+        # payload_dict form: { "Main_Temp": {"rows": [...], "alert": False}, "Humidity": {...} }
+        self.ui.send_message('update_dashboard_multi', payload_dict)
 
     def on_client_ready(self, sid, data):
         # sid(Session ID) for indicate
