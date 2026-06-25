@@ -45,6 +45,8 @@ def loop():
             s_name = sensor['name']
             s_protocol = sensor['protocol']
             s_pin = sensor['pin']
+            s_type = sensor.get('data_type', 'Data')
+            s_unit = sensor.get('unit', '')
 
             # read sensor data
             sensor_val = comm.read_sensor_dynamic(s_protocol, s_pin)
@@ -62,7 +64,9 @@ def loop():
             # carrying in payload
             payload[s_name] = {
                 'rows': formatted_rows,
-                'alert': is_anomaly
+                'alert': is_anomaly,
+                'data_type': s_type,
+                'unit': s_unit
             }
             
         web.broadcast_multi_data(payload)

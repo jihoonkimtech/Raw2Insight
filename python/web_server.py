@@ -27,7 +27,13 @@ class WebServer:
 
     def on_add_sensor(self, sid, data):
         print(f"[DEBUG] [WebServer] Received Sensor Config: {data}")
-        self.db.add_sensor(data['name'], data['protocol'], data['pin'])
+        self.db.add_sensor(
+            data['name'], 
+            data['protocol'], 
+            data['pin'], 
+            data.get('data_type', ''), 
+            data.get('unit', '')
+        )
         # refresh frontend
         self.ui.send_message('device_list_updated', {'type': 'sensor'})
 

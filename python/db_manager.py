@@ -42,7 +42,9 @@ class DBManager:
             "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
             "name": "TEXT",
             "protocol": "TEXT", # 'analog', 'i2c', 'digital_in'
-            "pin": "TEXT"       # 'A0', '0x68', '2'
+            "pin": "TEXT",       # 'A0', '0x68', '2'
+            "data_type": "TEXT", # 'Temperature' ...
+            "unit": "TEXT"       # '°C', 'lux' ...
         }
         self.config_db.create_table("sensors", sensor_cols)
 
@@ -59,10 +61,10 @@ class DBManager:
         print("[DEBUG] [DBManager] Device Config Tables Checked/Initialized.")
 
     # sensor management
-    def add_sensor(self, name, protocol, pin):
-        data = {"name": name, "protocol": protocol, "pin": pin}
+    def add_sensor(self, name, protocol, pin, data_type="", unit=""):
+        data = {"name": name, "protocol": protocol, "pin": pin, "data_type": data_type, "unit": unit}
         self.config_db.store("sensors", data)
-        print(f"[DEBUG] [DBManager] 🟢 Sensor Added: {name} ({protocol} on {pin})")
+        print(f"[DEBUG] [DBManager] Sensor Added: {name} ({data_type}, {unit})")
 
     # output device management
     def add_actuator(self, name, control_type, pin, trigger_logic, linked_sensor_id):
@@ -72,7 +74,7 @@ class DBManager:
             "linked_sensor_id": linked_sensor_id
         }
         self.config_db.store("actuators", data)
-        print(f"[DEBUG] [DBManager] 🔴 Actuator Added: {name} (Pin {pin})")
+        print(f"[DEBUG] [DBManager] Actuator Added: {name} (Pin {pin})")
 
     def get_all_sensors(self):
         return self.config_db.read("sensors")

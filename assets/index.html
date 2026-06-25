@@ -59,22 +59,32 @@
             <div id="aiStatus" class="status-badge status-safe">상태: 정상 (Normal)</div>
         </div>
         
-        <div class="chart-container">
-            <canvas id="sensorChart"></canvas>
-        </div>
-
-        <table id="dataTable">
-            <tr><th>시간 (Aggregated Time)</th><th>2초 평균 값 (Mean Value)</th></tr>
-        </table>
-
+        <div id="dynamic-charts-container"></div>
+      
         <div class="device-panel">
             <h3>⚙️ 동적 장치 관리자 (Device Router)</h3>
             <div class="flex-row">
                 <div class="flex-col">
                     <h4>📡 입력 장치 (Sensor) 등록</h4>
                     <div class="form-group">
-                        <input type="text" id="sen-name" placeholder="기기 이름 (예: Main_Temp)">
+                        <input type="text" id="sen-name" placeholder="기기 영문 이름 (예: Main_Temp)">
                     </div>
+                    
+                    <div class="form-group form-row-inner">
+                        <div>
+                            <input type="text" id="sen-datatype" placeholder="데이터 종류 (온도, 습도..)" list="type-list">
+                            <datalist id="type-list">
+                                <option value="온도"> <option value="습도"> <option value="조도"> <option value="거리">
+                            </datalist>
+                        </div>
+                        <div>
+                            <input type="text" id="sen-unit" placeholder="SI 단위 (°C, %, Lux..)" list="unit-list">
+                            <datalist id="unit-list">
+                                <option value="°C"> <option value="%"> <option value="Lux"> <option value="cm"> <option value="V">
+                            </datalist>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <select id="sen-protocol" onchange="updateSensorPinOptions()">
                             <option value="analog">Analog (아날로그)</option>
@@ -134,59 +144,112 @@
 
     <script>
         const socket = io();
-        const ctx = document.getElementById('sensorChart').getContext('2d');
-        const aiStatusBadge = document.getElementById('aiStatus');
-        
-        const sensorChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [], 
-                datasets: [{
-                    label: '집계된 센서 트렌드 (Mean)',
-                    data: [], 
-                    borderColor: '#007bff',
-                    backgroundColor: 'rgba(0, 123, 255, 0.2)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.3
-                }]
-            },
-            options: { responsive: true, maintainAspectRatio: false }
-        });
 
         socket.on('connect', () => {
             socket.emit('client_ready', { status: "connected" });
         });
 
-        // listen for new payload format (rows + alert status)
-        socket.on('update_dashboard', function(payload) {
-            const rows = payload.rows;
-            const isAnomaly = payload.alert;
+        // global chart object storage
+        const charts = {};
 
-            if (isAnomaly) {
+        const colorPalette = [
+            { border: '#007bff', bg: 'rgba(0, 123, 255, 0.2)' },  // 파랑
+            { border: '#28a745', bg: 'rgba(40, 167, 69, 0.2)' },  // 초록
+            { border: '#fd7e14', bg: 'rgba(253, 126, 20, 0.2)' }, // 주황
+            { border: '#6f42c1', bg: 'rgba(111, 66, 193, 0.2)' }, // 보라
+            { border: '#17a2b8', bg: 'rgba(23, 162, 184, 0.2)' }  // 청록
+        ];
+
+        // receive multi sensor data
+        socket.on('update_dashboard_multi', function(payload) {
+            const container = document.getElementById('dynamic-charts-container');
+            
+            // anomaly check
+            let anyAnomaly = false;
+
+            // travel sensors
+            Object.keys(payload).forEach(sensorName => {
+                const data = payload[sensorName];
+                const rows = data.rows;
+                const isAnomaly = data.alert;
+                
+                const sType = data.data_type || 'Data';
+                const sUnit = data.unit || '';
+
+                if (isAnomaly) anyAnomaly = true;
+
+                // create dynamic DOM
+                if (!document.getElementById(`panel-${sensorName}`)) {
+                    const panelHTML = `
+                        <div id="panel-${sensorName}" style="border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-top: 20px; background: #fff;">
+                            <div class="header">
+                                <h3 style="margin:0;">📊 ${sensorName} <span style="font-size:0.7em; color:#666;">(${sType})</span></h3>
+                                <div id="status-${sensorName}" class="status-badge status-safe">상태: 정상</div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="chart-${sensorName}"></canvas>
+                            </div>
+                        </div>
+                    `;
+                    container.insertAdjacentHTML('beforeend', panelHTML);
+
+                    const color = colorPalette[Object.keys(charts).length % colorPalette.length];
+
+                    // init Chart.js
+                    const ctx = document.getElementById(`chart-${sensorName}`).getContext('2d');
+                    charts[sensorName] = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [], 
+                            datasets: [{
+                                label: `${sType} 단위: ${sUnit}`,
+                                data: [], 
+                                borderColor: color.border,
+                                backgroundColor: color.bg,
+                                borderWidth: 2, fill: true, tension: 0.3
+                            }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false }
+                    });
+
+                    // store origin color
+                    charts[sensorName].baseColor = color;
+                }
+
+                // update status badge
+                const badge = document.getElementById(`status-${sensorName}`);
+                const chartObj = charts[sensorName];
+
+                if (isAnomaly) {
+                    badge.className = 'status-badge status-alert';
+                    badge.innerText = '⚠️ 이상 탐지됨!';
+                    chartObj.data.datasets[0].borderColor = '#dc3545';
+                    chartObj.data.datasets[0].backgroundColor = 'rgba(220, 53, 69, 0.2)';
+                } else {
+                    badge.className = 'status-badge status-safe';
+                    badge.innerText = '✅ 정상 (Safe)';
+                    chartObj.data.datasets[0].borderColor = chartObj.baseColor.border;
+                    chartObj.data.datasets[0].backgroundColor = chartObj.baseColor.bg;
+                }
+
+                // render chart data
+                const chartRows = [...rows].reverse();
+                chartObj.data.labels = chartRows.map(row => row[0]);
+                chartObj.data.datasets[0].data = chartRows.map(row => row[1]);
+                chartObj.update();
+            });
+
+            // global badge
+            const mainBadge = document.getElementById('aiStatus');
+            if(anyAnomaly) {
                 document.body.classList.add('alert-bg');
-                aiStatusBadge.className = 'status-badge status-alert';
-                aiStatusBadge.innerText = '이상 징후 감지됨! (Anomaly)';
-                sensorChart.data.datasets[0].borderColor = '#dc3545';
-                sensorChart.data.datasets[0].backgroundColor = 'rgba(220, 53, 69, 0.2)';
+                mainBadge.className = 'status-badge status-alert';
+                mainBadge.innerText = '⚠️ 시스템 이상 발생!';
             } else {
                 document.body.classList.remove('alert-bg');
-                aiStatusBadge.className = 'status-badge status-safe';
-                aiStatusBadge.innerText = '상태: 정상 (Safe)';
-                sensorChart.data.datasets[0].borderColor = '#007bff';
-                sensorChart.data.datasets[0].backgroundColor = 'rgba(0, 123, 255, 0.2)';
+                mainBadge.className = 'status-badge status-safe';
+                mainBadge.innerText = '✅ 상태: 정상 (Normal)';
             }
-
-            let tableHTML = "<tr><th>시간 (Aggregated Time)</th><th>2초 평균 값 (Mean Value)</th></tr>";
-            rows.slice(0, 5).forEach(row => { 
-                tableHTML += `<tr><td>${row[0]}</td><td>${row[1]}</td></tr>`;
-            });
-            document.getElementById('dataTable').innerHTML = tableHTML;
-
-            const chartRows = [...rows].reverse();
-            sensorChart.data.labels = chartRows.map(row => row[0]);
-            sensorChart.data.datasets[0].data = chartRows.map(row => row[1]);
-            sensorChart.update();
         });
 
         // Device Management
@@ -254,7 +317,9 @@
             const data = {
                 name: document.getElementById('sen-name').value,
                 protocol: protocol,
-                pin: pin
+                pin: pin,
+                data_type: document.getElementById('sen-datatype').value,
+                unit: document.getElementById('sen-unit').value
             };
             socket.emit('add_sensor_request', data);
             
@@ -306,38 +371,41 @@
         socket.on('update_device_list', function(payload) {
             const sensors = payload.sensors || [];
             const actuators = payload.actuators || [];
-
-            // render sensor list
-            let senTableHTML = "<tr><th>ID</th><th>이름</th><th>프로토콜</th><th>핀/주소</th><th>관리</th></tr>";
-            // fill sensor list
-            let linkOptionsHTML = '<option value="">연동 센서 선택...</option>';
             
+            const activeSensorNames = sensors.map(s => s.name);
+            Object.keys(charts).forEach(sensorName => {
+                if (!activeSensorNames.includes(sensorName)) {
+                    charts[sensorName].destroy();
+                    delete charts[sensorName];
+                    const panel = document.getElementById(`panel-${sensorName}`);
+                    if (panel) panel.remove(); // delete DOM
+                }
+            });
+
+            // sensor table
+            let senTableHTML = "<tr><th>ID</th><th>이름</th><th>종류/단위</th><th>프로토콜</th><th>핀/주소</th><th>관리</th></tr>";
+            let linkOptionsHTML = '<option value="">연동 센서 선택...</option>';
             sensors.forEach(sen => {
-                // render table
                 senTableHTML += `<tr>
-                    <td>${sen.id}</td>
-                    <td>${sen.name}</td>
-                    <td>${sen.protocol}</td>
-                    <td>${sen.pin}</td>
+                    <td>${sen.id}</td><td>${sen.name}</td>
+                    <td>${sen.data_type || 'N/A'} <span style="color:#888;">(${sen.unit || '-'})</span></td>
+                    <td>${sen.protocol}</td><td>${sen.pin}</td>
                     <td><button class="delete-btn" onclick="deleteDevice('sensor', ${sen.id})">❌ 삭제</button></td>
                 </tr>`;
-                
-                // render drop-down list
-                linkOptionsHTML += `<option value="${sen.id}">${sen.name} (ID: ${sen.id})</option>`;
+                linkOptionsHTML += `<option value="${sen.id}">${sen.name}</option>`;
             });
             document.getElementById('sensorListTable').innerHTML = senTableHTML;
             document.getElementById('act-link').innerHTML = linkOptionsHTML;
 
-            // render actuator list
-            let actTableHTML = "<tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀</th><th>동작값</th><th>연동 센서 ID</th><th>관리</th></tr>";
+            // actuator table
+            let actTableHTML = "<tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀</th><th>동작값</th><th>연동 센서</th><th>관리</th></tr>";
             actuators.forEach(act => {
+                // sensor mapping
+                const linkedSen = sensors.find(s => s.id === act.linked_sensor_id);
+                const linkedName = linkedSen ? linkedSen.name : `ID:${act.linked_sensor_id} (삭제됨)`;
                 actTableHTML += `<tr>
-                    <td>${act.id}</td>
-                    <td>${act.name}</td>
-                    <td>${act.control_type}</td>
-                    <td>${act.pin}</td>
-                    <td>${act.trigger_logic}</td>
-                    <td>${act.linked_sensor_id}</td>
+                    <td>${act.id}</td><td>${act.name}</td><td>${act.control_type}</td>
+                    <td>${act.pin}</td><td>${act.trigger_logic}</td><td>${linkedName}</td>
                     <td><button class="delete-btn" onclick="deleteDevice('actuator', ${act.id})">❌ 삭제</button></td>
                 </tr>`;
             });
