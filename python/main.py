@@ -32,27 +32,34 @@ def loop():
     print(f"\n--- [Main] Cycle #{cycle_count} Start ---")
     
     try:
-        # receive sensor data using communication manager
-        sensor_val = comm.read_sensor()
-
-        # store data using DB manager
-        db.insert_data(sensor_val)
-
-        # fetch aggregated data (2s mean) for AI
-        formatted_rows, values_only = db.get_aggregated_data(limit=20)
+        # read sensors list
+        sensors = db.get_all_sensors()
+        if not sensors:
+            print("[DEBUG] [Main] 등록된 센서가 없습니다. 웹 대시보드에서 기기를 추가해주세요.")
+            time.sleep(2)
+            return
         
-        # load 5 latest datas from DB
-        #latest_rows = db.get_latest_data()
-        
-        # refresh dashboard using latest rows with Web Server Manager
-        #web.broadcast_table(latest_rows)
+        for sensor in sensors:
+            s_name = sensor['name']
+            s_protocol = sensor['protocol']
+            s_pin = sensor['pin']
 
-        # run anomaly detection
+            # read sensor data
+            sensor_val = comm.read_sensor_dynamic(s_protocol, s_pin)
+
+            if sensor_val is not None:
+                # store in DB
+                db.insert_data(sensor_val, s_name)
+
+        # for graph render
+        main_sensor_name = sensors[0]['name']
+        formatted_rows, values_only = db.get_aggregated_data(sensor_name=main_sensor_name, limit=20)
+
+        # check anomaly
         is_anomaly = False
         if len(values_only) >= 15:
             is_anomaly = ai.detect(values_only)
             
-        # broadcast to frontend
         web.broadcast_data(formatted_rows, is_anomaly)
         
         print(f"--- [Main] Cycle #{cycle_count} Completed ---")

@@ -80,14 +80,14 @@ class DBManager:
     def get_all_actuators(self):
         return self.config_db.read("actuators")
 
-    def insert_data(self, value):
+    def insert_data(self, value, sensor_name):
         # store date with timestamp
         self.ts_store.write_sample(
-            measure=self.field_name, 
+            measure=sensor_name,
             value=value, 
             measurement_name=self.measurement_name
         )
-        print(f"[DEBUG] [DBManager] Inserted TimeSeries Row -> Value: {value}")
+        print(f"[DEBUG] [DBManager] Inserted [{sensor_name}] -> Value: {value}")
         return value
 
     def get_latest_data(self, limit=15):
@@ -117,11 +117,11 @@ class DBManager:
             print(f"[DEBUG] [DBManager] Error reading timeseries samples: {e}")
             return []
 
-    def get_aggregated_data(self, limit=20):
+    def get_aggregated_data(self, sensor_name, limit=20):
         # fetch aggregated data (2-second moving average)
         try:
             samples = self.ts_store.read_samples(
-                measure=self.field_name,
+                measure=sensor_name, # only specific sensor
                 measurement_name=self.measurement_name,
                 start_from="-10m",
                 aggr_window="2s",  # aggregate every 2 seconds

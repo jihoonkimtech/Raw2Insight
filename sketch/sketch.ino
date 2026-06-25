@@ -8,20 +8,42 @@ Purpose      : Hardware interface for sensors and actuators
 */
 #include "Arduino_RouterBridge.h"
 
-int dummySensorValue = 0;
+int read_analog(int pin_num) {
+  int dummyVal = random(512, 1024);
+  //int val = analogRead(pin_num);
+  Serial.print("[MCU] Analog Pin A"); Serial.print(pin_num);
+  //Serial.print(" Read: "); Serial.println(val);
+  Serial.print(" Read: "); Serial.println(dummyVal);
+  //return val;
+  return dummyVal;
+}
 
-int get_sensor_data() {
-  dummySensorValue = random(1,1024);
-  Serial.print("get_sensor_data() procedure called! return value is ");
-  Serial.println(dummySensorValue);
-  return dummySensorValue;
+int read_digital(int pin_num) {
+  int dummyVal = random(0, 2);
+  //pinMode(pin_num, INPUT);
+  //int val = digitalRead(pin_num);
+  Serial.print("[MCU] Digital Pin D"); Serial.print(pin_num);
+  //Serial.print(" Read: "); Serial.println(val);
+  Serial.print(" Read: "); Serial.println(dummyVal);
+  //return val;
+  return dummyVal;
+}
+
+int read_i2c(String addr_str) {
+  int dummyVal = random(24, 48);
+  Serial.print("[MCU] I2C Device ("); Serial.print(addr_str);
+  Serial.print(") Read: "); Serial.println(dummyVal);
+  return dummyVal;
 }
 
 void setup() {
   Bridge.begin();
   Serial.begin(115200);
   
-  Bridge.provide("get_sensor_data", get_sensor_data);
+  // register functions to bridge
+  Bridge.provide("read_analog", read_analog);
+  Bridge.provide("read_digital", read_digital);
+  Bridge.provide("read_i2c", read_i2c);
 }
 
 void loop() {
