@@ -67,3 +67,33 @@ class DBManager:
         except Exception as e:
             print(f"[DEBUG] [DBManager] Error reading timeseries samples: {e}")
             return []
+
+    def get_aggregated_data(self, limit=20):
+        # fetch aggregated data (2-second moving average)
+        try:
+            samples = self.ts_store.read_samples(
+                measure=self.field_name,
+                measurement_name=self.measurement_name,
+                start_from="-10m",
+                aggr_window="2s",  # aggregate every 2 seconds
+                aggr_func="mean",  # calculate mean
+                limit=limit,
+                order="desc" 
+            )
+            
+            formatted_rows = []
+            values_only = []
+            
+            for sample in samples:
+                field_name, ts_iso, val = sample
+                if val is not None:
+                    # extract HH:MM:SS
+                    time_only = ts_iso.split('T')[1][:8] if 'T' in ts_iso else ts_iso
+                    formatted_rows.append([time_only, round(val, 1)])
+                    values_only.append(val)
+            
+            return formatted_rows, values_only
+
+        except Exception as e:
+            print(f"[ERROR] [DBManager] Error reading aggregated samples: {e}")
+            return [], []
