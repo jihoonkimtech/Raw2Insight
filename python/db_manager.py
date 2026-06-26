@@ -92,7 +92,7 @@ class DBManager:
         print(f"[DEBUG] [DBManager] Inserted [{sensor_name}] -> Value: {value}")
         return value
 
-    def get_latest_data(self, limit=15):
+    def get_latest_data(self, limit=20):
         
         print(f"[DEBUG] [DBManager] Fetching latest {limit} records from InfluxDB...")
         try:
@@ -156,3 +156,27 @@ class DBManager:
     def delete_actuator(self, actuator_id):
         self.config_db.delete("actuators", f"id = {actuator_id}")
         print(f"[DEBUG] [DBManager] Actuator ID {actuator_id} Deleted.")
+
+    def get_raw_data(self, sensor_name, limit=20):
+        try:
+            samples = self.ts_store.read_samples(
+                measure=sensor_name,
+                measurement_name=self.measurement_name,
+                start_from="-10m",
+                limit=limit,
+                order="desc" 
+            )
+            
+            formatted_rows = []
+            for sample in samples:
+                field_name, ts_iso, val = sample
+                if val is not None:
+                    # extract time
+                    time_only = ts_iso.split('T')[1][:8] if 'T' in ts_iso else ts_iso
+                    formatted_rows.append([time_only, round(val, 2)])
+            
+            return formatted_rows
+
+        except Exception as e:
+            print(f"[ERROR] [DBManager] Error reading raw samples: {e}")
+            return []

@@ -59,6 +59,9 @@ def loop():
 
             # load aggregated data
             formatted_rows, values_only = db.get_aggregated_data(sensor_name=s_name, limit=20)
+
+            # load raw data
+            raw_rows = db.get_raw_data(sensor_name=s_name, limit=20)
     
             # check anomaly
             is_anomaly = ai.detect(s_name, values_only)
@@ -81,6 +84,7 @@ def loop():
             # carrying in payload
             payload[s_name] = {
                 'rows': formatted_rows,
+                'raw_rows': raw_rows,
                 'alert': is_anomaly,
                 'data_type': s_type,
                 'unit': s_unit,
