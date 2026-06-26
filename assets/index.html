@@ -22,7 +22,7 @@
         .alert-bg { background-color: #ffe6e6; }
 
         /* device management panel */
-        .device-panel { background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #ddd; }
+        .device-panel { background: #f8f9fa; padding: 20px; margin-top: 30px; border-radius: 8px; border: 1px solid #ddd; }
         .device-panel h3 { margin-top: 0; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
         .device-panel h4 { margin-bottom: 10px; color: #333; }
         .flex-row { display: flex; gap: 20px; flex-wrap: wrap; }
@@ -53,6 +53,7 @@
         .act-on { background-color: #ffc107; color: #000; border-color: #ffc107; box-shadow: 0 0 10px rgba(255, 193, 7, 0.7); } /* 불 들어온 효과 */
         .act-off { background-color: #e9ecef; color: #6c757d; }
 
+        /* tab board */
         .tab-nav { display: flex; gap: 10px; margin-top: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
         .tab-btn { background-color: #f8f9fa; border: 1px solid #ccc; padding: 10px 20px; cursor: pointer; border-radius: 5px 5px 0 0; font-weight: bold; color: #333; transition: 0.3s; }
         .tab-btn.active { background-color: #007bff; color: white; border-color: #007bff; }
@@ -61,7 +62,7 @@
         .tab-content.active { display: block; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-        /* Chart tab grid */
+        /* chart board */
         #dynamic-charts-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -72,7 +73,7 @@
             margin-top: 0 !important; 
         }
 
-        /* Setting tab grid */
+        /* setting board */
         .settings-layout {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -80,6 +81,8 @@
             margin-top: 20px;
             align-items: start;
         }
+        
+        .current-val { font-size: 1.05em; font-weight: 500; min-width: 110px; text-align: center; }
     </style>
 </head>
 <body>
@@ -220,7 +223,6 @@
         
         function buildTrendLine(values) {
             let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0, count = 0;
-        
             values.forEach((y, x) => {
                 if (y !== null && y !== undefined) {
                     sumX += x;
@@ -230,22 +232,22 @@
                     count++;
                 }
             });
-        
             if (count <= 1) return [...values];
-        
             const denominator = count * sumXX - sumX * sumX;
             if (denominator === 0) return [...values];
-        
             const slope = (count * sumXY - sumX * sumY) / denominator;
             const intercept = (sumY - slope * sumX) / count;
-        
             return values.map((_, x) => slope * x + intercept);
         }
 
+        // receive multi sensor data
         socket.on('update_dashboard_multi', function(payload) {
             const container = document.getElementById('dynamic-charts-container');
+        
+            // anomaly check
             let anyAnomaly = false;
         
+            // travel sensors
             Object.keys(payload).forEach(sensorName => {
                 const data = payload[sensorName];
                 const rows = data.rows || [];
@@ -254,15 +256,17 @@
         
                 const sType = data.data_type || 'Data';
                 const sUnit = data.unit || '';
+                const sProtocol = data.protocol || 'analog';
+                const isDigital = (sProtocol === 'digital');
         
                 if (isAnomaly) anyAnomaly = true;
         
-                // DOM 생성
+                // create dynamic DOM
                 if (!document.getElementById(`panel-${sensorName}`)) {
                     const panelHTML = `
                         <div id="panel-${sensorName}" style="border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-top: 20px; background: #fff;">
                             <div class="header">
-                                <h3 style="margin:0;">📊 ${sensorName} <span style="font-size:0.7em; color:#666;">(${sType})</span></h3>
+                                <h3 style="margin:0;">📊 ${sensorName} <span style="font-size:0.7em; color:#666;">(${sType}${isDigital ? ' - Digital' : ''})</span></h3>
                                 <div id="val-${sensorName}" class="current-val" style="font-size:1.05em; font-weight:500; min-width:110px; text-align:center;">-- ${sUnit}</div>
                                 <div id="status-${sensorName}" class="status-badge status-safe">상태: 정상</div>
                             </div>
@@ -277,7 +281,7 @@
         
                     const color = colorPalette[Object.keys(charts).length % colorPalette.length];
         
-                    // Chart js 초기화
+                    // init Chart.js
                     const ctx = document.getElementById(`chart-${sensorName}`).getContext('2d');
                     charts[sensorName] = new Chart(ctx, {
                         type: 'line',
@@ -285,14 +289,15 @@
                             labels: [],
                             datasets: [
                                 {
-                                    label: '원본 (Raw)',
+                                    label: isDigital ? '상태 (Digital)' : '원본 (Raw)',
                                     data: [],
-                                    borderColor: 'rgba(110, 110, 110, 0.6)',
-                                    backgroundColor: 'transparent',
-                                    borderWidth: 1,
-                                    fill: false,
+                                    borderColor: isDigital ? color.border : 'rgba(110, 110, 110, 0.6)',
+                                    backgroundColor: isDigital ? color.bg : 'transparent',
+                                    borderWidth: isDigital ? 2 : 1,
+                                    fill: isDigital ? true : false,
+                                    stepped: isDigital ? true : false,
                                     tension: 0,
-                                    pointRadius: 1.5,
+                                    pointRadius: isDigital ? 0 : 1.5,
                                     spanGaps: true
                                 },
                                 {
@@ -304,7 +309,8 @@
                                     fill: false,
                                     pointRadius: 0,
                                     tension: 0,
-                                    spanGaps: true
+                                    spanGaps: true,
+                                    hidden: isDigital
                                 },
                                 {
                                     label: '안정값 (Smoothed)',
@@ -316,7 +322,8 @@
                                     tension: 0.18,
                                     pointRadius: 2,
                                     pointHoverRadius: 4,
-                                    spanGaps: true
+                                    spanGaps: true,
+                                    hidden: isDigital
                                 }
                             ]
                         },
@@ -324,7 +331,13 @@
                             responsive: true, maintainAspectRatio: false,
                             interaction: { mode: 'index', intersect: false },
                             plugins: {
-                                legend: { labels: { boxWidth: 28, usePointStyle: false, padding: 14 } },
+                                legend: { 
+                                    labels: { boxWidth: 28, usePointStyle: false, padding: 14 },
+                                    filter: function(item, chart) {
+                                        if (isDigital) return item.datasetIndex === 0;
+                                        return true;
+                                    }
+                                },
                                 tooltip: { callbacks: { title: function(context) { return `시각: ${context[0].label}`; } } }
                             },
                             scales: {
@@ -333,77 +346,90 @@
                                     grid: { display: true, color: 'rgba(0,0,0,0.06)' }
                                 },
                                 y: {
-                                    ticks: { precision: 0 },
+                                    min: isDigital ? -0.2 : undefined,
+                                    max: isDigital ? 1.2 : undefined,
+                                    ticks: { 
+                                        precision: 0,
+                                        callback: function(value) {
+                                            if (isDigital) return (value === 0 || value === 1) ? value : '';
+                                            return value;
+                                        }
+                                    },
                                     grid: { color: 'rgba(0,0,0,0.08)' }
                                 }
                             }
                         }
                     });
         
+                    // store origin color
                     charts[sensorName].baseColor = color;
                 }
         
-                // 뱃지 업데이트
+                // update status badge
                 const badge = document.getElementById(`status-${sensorName}`);
                 const chartObj = charts[sensorName];
                 const valDisplay = document.getElementById(`val-${sensorName}`);
         
+                const targetDatasetIndex = isDigital ? 0 : 2;
+
                 if (isAnomaly) {
                     badge.className = 'status-badge status-alert';
                     badge.innerText = '⚠️ 이상 탐지됨!';
-                    chartObj.data.datasets[2].borderColor = '#dc3545';
-                    chartObj.data.datasets[2].backgroundColor = 'rgba(220, 53, 69, 0.2)';
+                    chartObj.data.datasets[targetDatasetIndex].borderColor = '#dc3545';
+                    chartObj.data.datasets[targetDatasetIndex].backgroundColor = 'rgba(220, 53, 69, 0.2)';
                     valDisplay.style.color = '#dc3545';
                 } else {
                     badge.className = 'status-badge status-safe';
                     badge.innerText = '✅ 정상 (Safe)';
-                    chartObj.data.datasets[2].borderColor = chartObj.baseColor.border;
-                    chartObj.data.datasets[2].backgroundColor = chartObj.baseColor.bg;
+                    chartObj.data.datasets[targetDatasetIndex].borderColor = chartObj.baseColor.border;
+                    chartObj.data.datasets[targetDatasetIndex].backgroundColor = chartObj.baseColor.bg;
                     valDisplay.style.color = chartObj.baseColor.border;
                 }
         
-                // DB에서 넘어온 원본 데이터 정렬
+                // render chart data
                 const aggrRows = sortRowsByTime(rows);
                 const rawRowsList = sortRowsByTime(rawRows);
                 
-                // --- [핵심 해결] 두 데이터 중 '더 늦게 시작하는 시간'을 찾아서 빈 공간 잘라내기 ---
                 const rawStartTime = rawRowsList.length > 0 ? timeToSec(rawRowsList[0][0]) : 0;
                 const aggrStartTime = aggrRows.length > 0 ? timeToSec(aggrRows[0][0]) : 0;
-                const syncStartTime = Math.max(rawStartTime, aggrStartTime); // 데이터가 모두 존재하는 기준 시점
+                const syncStartTime = isDigital ? rawStartTime : Math.max(rawStartTime, aggrStartTime); 
 
-                // 통합 X축 생성 후 기준 시점 이전의 빈 시간대는 필터링(삭제)
                 const allTimes = new Set([
                     ...rawRowsList.map(r => r[0]),
-                    ...aggrRows.map(r => r[0])
+                    ...(isDigital ? [] : aggrRows.map(r => r[0]))
                 ]);
                 const xLabels = Array.from(allTimes)
                     .sort((a, b) => timeToSec(a) - timeToSec(b))
                     .filter(t => timeToSec(t) >= syncStartTime);
 
-                // Map을 이용해 매칭
                 const rawMap = new Map(rawRowsList.map(r => [r[0], r[1]]));
                 const aggrMap = new Map(aggrRows.map(r => [r[0], r[1]]));
 
                 const alignedRawData = xLabels.map(time => rawMap.has(time) ? rawMap.get(time) : null);
-                const alignedAggrData = xLabels.map(time => aggrMap.has(time) ? aggrMap.get(time) : null);
+                const alignedAggrData = isDigital ? [] : xLabels.map(time => aggrMap.has(time) ? aggrMap.get(time) : null);
 
-                // 차트 데이터 삽입
                 chartObj.data.labels = xLabels;
                 chartObj.data.datasets[0].data = alignedRawData;
-                chartObj.data.datasets[2].data = alignedAggrData;
+                
+                if (isDigital) {
+                    chartObj.data.datasets[1].data = [];
+                    chartObj.data.datasets[2].data = [];
+                } else {
+                    chartObj.data.datasets[2].data = alignedAggrData;
+                    const rawValidCount = alignedRawData.filter(v => v !== null && v !== undefined).length;
+                    chartObj.data.datasets[1].data = rawValidCount >= 3 ? buildTrendLine(alignedRawData) : [];
+                }
         
-                // 최신 데이터 표시
                 if (rawRowsList.length > 0) {
-                    valDisplay.innerText = `${rawRowsList[rawRowsList.length - 1][1]} ${sUnit}`;
+                    const latestVal = rawRowsList[rawRowsList.length - 1][1];
+                    valDisplay.innerText = `${latestVal} ${sUnit}`;
+                } else if (aggrRows.length > 0) {
+                    const latestVal = aggrRows[aggrRows.length - 1][1];
+                    valDisplay.innerText = `${latestVal} ${sUnit}`;
                 } else {
                     valDisplay.innerText = `-- ${sUnit}`;
                 }
         
-                // 추세선 계산
-                const rawValidCount = alignedRawData.filter(v => v !== null && v !== undefined).length;
-                chartObj.data.datasets[1].data = rawValidCount >= 3 ? buildTrendLine(alignedRawData) : [];
-        
-                // 액추에이터 업데이트
                 const actContainer = document.getElementById(`act-container-${sensorName}`);
                 if (actContainer) {
                     let actHTML = '';
@@ -424,7 +450,7 @@
                 chartObj.update('none');
             });
         
-            // 글로벌 상태 뱃지
+            // global badge
             const mainBadge = document.getElementById('aiStatus');
             if (anyAnomaly) {
                 document.body.classList.add('alert-bg');
@@ -596,8 +622,7 @@
             });
             document.getElementById('actuatorListTable').innerHTML = actTableHTML;
         });
-      
-        // for switching tab
+
         function switchTab(event, tabId) {
             document.querySelectorAll('.tab-content').forEach(function(content) {
                 content.classList.remove('active');

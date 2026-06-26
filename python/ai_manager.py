@@ -15,14 +15,19 @@ class AIManager:
         # contamination: expected proportion of outliers (10%)
         self.models = {}
 
-    def detect(self, sensor_name, recent_data):
-        # create sensor's IsolationForest model
-        if sensor_name not in self.models:
-            self.models[sensor_name] = IsolationForest(contamination=0.1, random_state=42)
-            
+    def detect(self, sensor_name, recent_data, protocol='analog'):
         # require minimum data points to train meaningfully
         if len(recent_data) < 15:
             return False
+            
+        if protocol == 'digital':
+            # using rule-base decision
+            latest_val = recent_data[0] 
+            return bool(latest_val >= 1)
+
+        # create sensor's IsolationForest model
+        if sensor_name not in self.models:
+            self.models[sensor_name] = IsolationForest(contamination=0.1, random_state=42)
 
         # reshape data for scikit-learn (e.g., [[val1], [val2], ...])
         X = np.array(recent_data).reshape(-1, 1)

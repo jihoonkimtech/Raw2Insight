@@ -62,20 +62,25 @@ def loop():
 
             # load raw data
             raw_rows = db.get_raw_data(sensor_name=s_name, limit=20)
+
+            # digital is not require MA
+            if s_protocol == 'digital':
+                formatted_rows = raw_rows
+                values_only = [r[1] for r in raw_rows] if raw_rows else []
+            else:
+                formatted_rows, values_only = db.get_aggregated_data(sensor_name=s_name, limit=20)
     
             # check anomaly
-            is_anomaly = ai.detect(s_name, values_only)
+            is_anomaly = ai.detect(s_name, values_only, s_protocol)
 
             linked_acts_info = []
             for act in actuators:
                 if act['linked_sensor_id'] == sensor['id']:
-                    # 이상 감지 시 trigger_logic(동작값)을 쏘고, 정상일 땐 0(꺼짐)을 쏩니다.
+                    # if anomaly detected? using trigger_logic
                     target_val = act['trigger_logic'] if is_anomaly else 0
                     
-                    # MCU로 제어 명령 하달
                     comm.set_actuator_dynamic(act['control_type'], act['pin'], target_val)
                     
-                    # 프론트엔드 전송용 상태 저장
                     linked_acts_info.append({
                         'name': act['name'],
                         'active': is_anomaly
@@ -88,6 +93,7 @@ def loop():
                 'alert': is_anomaly,
                 'data_type': s_type,
                 'unit': s_unit,
+                'protocol': s_protocol,
                 'actuators': linked_acts_info
             }
             
