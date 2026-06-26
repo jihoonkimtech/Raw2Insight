@@ -7,6 +7,7 @@ Purpose      : Main orchestrator coordinating DB, Comm, and Web
 ===================================================================
 """
 import time
+import psutil
 from arduino.app_utils import App
 
 # load custom modules
@@ -96,6 +97,15 @@ def loop():
                 'protocol': s_protocol,
                 'actuators': linked_acts_info
             }
+
+        # for device monitoring
+        try:
+            payload['__sys_health__'] = {
+                'cpu': psutil.cpu_percent(interval=None),
+                'ram': psutil.virtual_memory().percent
+            }
+        except Exception as e:
+            print(f"[ERROR] [Main] Failed to get system health: {e}")
             
         web.broadcast_multi_data(payload)
         

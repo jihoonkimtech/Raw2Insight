@@ -83,6 +83,13 @@
         }
         
         .current-val { font-size: 1.05em; font-weight: 500; min-width: 110px; text-align: center; }
+
+        .sys-health-container { display: flex; gap: 15px; background: #fff; padding: 10px 20px; border-radius: 8px; border: 1px solid #ccc; font-size: 0.9em; font-weight: bold; }
+        .health-item { display: flex; align-items: center; gap: 5px; }
+        .health-val { padding: 3px 8px; border-radius: 4px; color: white; min-width: 45px; text-align: center; transition: 0.3s; }
+        .health-safe { background-color: #28a745; }
+        .health-warn { background-color: #ffc107; color: #000; }
+        .health-danger { background-color: #dc3545; }
     </style>
 </head>
 <body>
@@ -91,6 +98,10 @@
             <div>
                 <h2>Raw2Insight Edge AI</h2>
                 <p>2초 단위 집계 및 Isolation Forest 이상 탐지</p>
+            </div>
+            <div class="sys-health-container" id="sysHealthUI" style="display:none;">
+                <div class="health-item">🖥️ CPU: <span id="cpuVal" class="health-val health-safe">0%</span></div>
+                <div class="health-item">💾 RAM: <span id="ramVal" class="health-val health-safe">0%</span></div>
             </div>
             <div id="aiStatus" class="status-badge status-safe">상태: 정상 (Normal)</div>
         </div>
@@ -246,9 +257,29 @@
         
             // anomaly check
             let anyAnomaly = false;
+
+            if (payload['__sys_health__']) {
+                const health = payload['__sys_health__'];
+                document.getElementById('sysHealthUI').style.display = 'flex';
+                
+                const cpuEl = document.getElementById('cpuVal');
+                const ramEl = document.getElementById('ramVal');
+                
+                cpuEl.innerText = health.cpu + '%';
+                if(health.cpu < 70) cpuEl.className = 'health-val health-safe';
+                else if(health.cpu < 90) cpuEl.className = 'health-val health-warn';
+                else cpuEl.className = 'health-val health-danger';
+
+                ramEl.innerText = health.ram + '%';
+                if(health.ram < 70) ramEl.className = 'health-val health-safe';
+                else if(health.ram < 90) ramEl.className = 'health-val health-warn';
+                else ramEl.className = 'health-val health-danger';
+            }
         
             // travel sensors
             Object.keys(payload).forEach(sensorName => {
+                if (sensorName === '__sys_health__') return;
+              
                 const data = payload[sensorName];
                 const rows = data.rows || [];
                 const rawRows = data.raw_rows || [];
