@@ -47,6 +47,11 @@
         
         .delete-btn { background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
         .delete-btn:hover { background-color: #c82333; }
+
+        .act-container { margin-top: 10px; display: flex; gap: 10px; }
+        .act-box { padding: 5px 12px; border-radius: 20px; font-size: 0.85em; font-weight: bold; transition: 0.3s; border: 1px solid #ccc; }
+        .act-on { background-color: #ffc107; color: #000; border-color: #ffc107; box-shadow: 0 0 10px rgba(255, 193, 7, 0.7); } /* 불 들어온 효과 */
+        .act-off { background-color: #e9ecef; color: #6c757d; }
     </style>
 </head>
 <body>
@@ -186,6 +191,8 @@
                                 <h3 style="margin:0;">📊 ${sensorName} <span style="font-size:0.7em; color:#666;">(${sType})</span></h3>
                                 <div id="status-${sensorName}" class="status-badge status-safe">상태: 정상</div>
                             </div>
+                            <div id="act-container-${sensorName}" class="act-container"></div>
+                            
                             <div class="chart-container">
                                 <canvas id="chart-${sensorName}"></canvas>
                             </div>
@@ -236,6 +243,24 @@
                 const chartRows = [...rows].reverse();
                 chartObj.data.labels = chartRows.map(row => row[0]);
                 chartObj.data.datasets[0].data = chartRows.map(row => row[1]);
+
+                const actContainer = document.getElementById(`act-container-${sensorName}`);
+                if (actContainer) {
+                    let actHTML = '';
+                    const linkedActs = data.actuators || [];
+                    
+                    if (linkedActs.length > 0) {
+                        linkedActs.forEach(act => {
+                            const actClass = act.active ? 'act-on' : 'act-off';
+                            const actText = act.active ? '⚡ 작동중 (ON)' : '💤 대기중 (OFF)';
+                            actHTML += `<div class="act-box ${actClass}">⚙️ ${act.name}: ${actText}</div>`;
+                        });
+                    } else {
+                        actHTML = `<div class="act-box act-off" style="opacity: 0.5;">연동된 출력 장치 없음</div>`;
+                    }
+                    actContainer.innerHTML = actHTML;
+                }
+              
                 chartObj.update();
             });
 

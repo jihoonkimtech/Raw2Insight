@@ -34,6 +34,8 @@ def loop():
     try:
         # read sensors list
         sensors = db.get_all_sensors()
+        actuators = db.get_all_actuators()
+        
         if not sensors:
             print("[DEBUG] [Main] 등록된 센서가 없습니다. 웹 대시보드에서 기기를 추가해주세요.")
             time.sleep(2)
@@ -60,13 +62,29 @@ def loop():
     
             # check anomaly
             is_anomaly = ai.detect(s_name, values_only)
+
+            linked_acts_info = []
+            for act in actuators:
+                if act['linked_sensor_id'] == sensor['id']:
+                    # 이상 감지 시 trigger_logic(동작값)을 쏘고, 정상일 땐 0(꺼짐)을 쏩니다.
+                    target_val = act['trigger_logic'] if is_anomaly else 0
+                    
+                    # MCU로 제어 명령 하달
+                    comm.set_actuator_dynamic(act['control_type'], act['pin'], target_val)
+                    
+                    # 프론트엔드 전송용 상태 저장
+                    linked_acts_info.append({
+                        'name': act['name'],
+                        'active': is_anomaly
+                    })
             
             # carrying in payload
             payload[s_name] = {
                 'rows': formatted_rows,
                 'alert': is_anomaly,
                 'data_type': s_type,
-                'unit': s_unit
+                'unit': s_unit,
+                'actuators': linked_acts_info
             }
             
         web.broadcast_multi_data(payload)

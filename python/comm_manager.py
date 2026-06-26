@@ -50,3 +50,16 @@ class CommManager:
         # send control commands to the MCU 
         print(f"[DEBUG] [CommManager] Sending control command to MCU (param: {param})...")
         Bridge.call("set_cooler", param)
+
+    def set_actuator_dynamic(self, control_type, pin, value):
+        """
+        제어 방식(디지털/PWM)에 따라 MCU의 적절한 출력 함수를 호출합니다.
+        """
+        try:
+            pin_num = int(pin)
+            if control_type == 'digital_out':
+                return Bridge.call("write_digital", pin_num, value)
+            elif control_type == 'pwm':
+                return Bridge.call("write_pwm", pin_num, value)
+        except Exception as e:
+            print(f"[ERROR] [CommManager] 액추에이터 제어 실패 ({control_type} - {pin}): {e}")
