@@ -16,12 +16,8 @@ class CommManager:
         # request sensor data from MCU
         print("[DEBUG] [CommManager] Calling MCU functions for read sensor data...")
         return Bridge.call("read_sensor")
-
-    def send_control(self, param):
-        # send control command to MCU
-        Bridge.call("set_cooler", param)
         
-    def read_sensor_dynamic(self, protocol, pin_or_addr):
+    def read_sensor_dynamic(self, protocol, pin_or_addr, read_bytes=0):
         try:
             if protocol == 'analog':
                 pin_num = int(pin_or_addr.upper().replace('A', ''))
@@ -34,9 +30,16 @@ class CommManager:
                 return Bridge.call("read_digital", pin_num)
                 
             elif protocol == 'i2c':
-                # I2C addr is string
-                print(f"[DEBUG] [CommManager] Call function via Bridge : read_i2c({pin_or_addr})")
-                return Bridge.call("read_i2c", pin_or_addr)
+                if read_bytes > 0:
+                    print(f"[DEBUG] [CommManager] Call function via Bridge : read_i2c_bytes({pin_or_addr}, {read_bytes})")
+                    byte_str = Bridge.call("read_i2c_bytes", pin_or_addr, read_bytes)
+                    if byte_str:
+                        return [int(x) for x in str(byte_str).split(",") if x.strip()]
+                    return []
+                # for debug
+                else:
+                    print(f"[DEBUG] [CommManager] Call function via Bridge : read_i2c({pin_or_addr})")
+                    return Bridge.call("read_i2c", pin_or_addr)
                 
             else:
                 print(f"[ERROR] [CommManager] Unknown Protocol: {protocol}")
@@ -44,13 +47,8 @@ class CommManager:
                 
         except Exception as e:
             print(f"[ERROR] [CommManager] Communication Fail ({protocol} - {pin_or_addr}): {e}")
-            return 0
-
-    def send_control(self, param):
-        # send control commands to the MCU 
-        print(f"[DEBUG] [CommManager] Sending control command to MCU (param: {param})...")
-        Bridge.call("set_cooler", param)
-
+            return [] if protocol == 'i2c' and read_bytes > 0 else 0
+    
     def set_actuator_dynamic(self, control_type, pin, value):
         try:
             pin_num = int(pin)

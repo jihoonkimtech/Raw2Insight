@@ -127,9 +127,35 @@
                         <div class="flex-col">
                             <h4>📡 입력 장치 (Sensor) 등록</h4>
                             <div class="form-group">
-                                <input type="text" id="sen-name" placeholder="기기 영문 이름 (예: Main_Temp)">
+                                <input type="text" id="sen-name" placeholder="이름">
                             </div>
-                            
+
+                            <div class="form-group">
+                                <select id="sen-protocol" onchange="updateSensorPinOptions()">
+                                    <option value="analog">Analog (아날로그)</option>
+                                    <option value="digital">Digital (디지털)</option>
+                                    <option value="i2c">I2C (버스 통신)</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <select id="sen-pin-select"></select>
+                                <input type="text" id="sen-pin-input" placeholder="I2C 주소 (예: 0x68)" style="display:none;">
+                            </div>
+
+                            <div class="form-group form-row-inner" id="i2c-profile-container" style="display:none;">
+                                <div>
+                                    <select id="sen-i2c-profile" onchange="onI2CProfileChange()">
+                                        <option value="">I2C 드라이버 스크립트 로딩 중...</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <select id="sen-i2c-datakey">
+                                        <option value="">추출할 데이터 선택...</option>
+                                    </select>
+                                </div>
+                            </div>
+
                             <div class="form-group form-row-inner">
                                 <div>
                                     <input type="text" id="sen-datatype" placeholder="데이터 종류 (온도, 습도..)" list="type-list">
@@ -145,38 +171,23 @@
                                 </div>
                             </div>
 
-                            <div class="form-group">
-                                <select id="sen-protocol" onchange="updateSensorPinOptions()">
-                                    <option value="analog">Analog (아날로그)</option>
-                                    <option value="digital">Digital (디지털)</option>
-                                    <option value="i2c">I2C (버스 통신)</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <select id="sen-pin-select"></select>
-                                <input type="text" id="sen-pin-input" placeholder="I2C 주소 (예: 0x68)" style="display:none;">
-                            </div>
-                            <div class="form-group form-row-inner">
-                                <div class="form-group form-row-inner" id="analog-thresh-container">
+                            <div class="form-group form-row-inner" id="analog-thresh-container">
                                 <div><input type="number" step="0.1" id="sen-thresh-low" placeholder="하한 이상 기준 (선택)"></div>
                                 <div><input type="number" step="0.1" id="sen-thresh-high" placeholder="상한 이상 기준 (선택)"></div>
-                                </div>
-                                
-                                <div class="form-group" id="digital-thresh-container" style="display:none;">
-                                    <select id="sen-digital-trigger">
-                                        <option value="1">이상 상태: 1 (HIGH) 일 때 동작</option>
-                                        <option value="0">이상 상태: 0 (LOW) 일 때 동작</option>
-                                    </select>
-                                </div>
-                                <div class="form-group form-inner" id="analog-thresh-container" style="display:none;">
-                                    <div><input type="number" step="0.1" id="sen-thresh-low" placeholder="하한 이상 기준 (선택)"></div>
-                                    <div><input type="number" step="0.1" id="sen-thresh-high" placeholder="상한 이상 기준 (선택)"></div>
-                                </div>
-                                <div class="form-group form-inner" id="analog-calib-container" style="display:none;">
-                                    <div><input type="number" step="0.01" id="sen-multiplier" placeholder="보정 곱(a) : 기본 1.0"></div>
-                                    <div><input type="number" step="0.01" id="sen-offset" placeholder="보정 합(b) : 기본 0.0"></div>
-                                </div>
                             </div>
+                            
+                            <div class="form-group" id="digital-thresh-container" style="display:none;">
+                                <select id="sen-digital-trigger">
+                                    <option value="1">이상 상태: 1 (HIGH) 일 때 동작</option>
+                                    <option value="0">이상 상태: 0 (LOW) 일 때 동작</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group form-row-inner" id="analog-calib-container">
+                                <div><input type="number" step="0.01" id="sen-multiplier" placeholder="보정 곱(a) : 기본 1.0"></div>
+                                <div><input type="number" step="0.01" id="sen-offset" placeholder="보정 합(b) : 기본 0.0"></div>
+                            </div>
+
                             <button class="form-btn" onclick="submitSensor()">센서 추가</button>
                         </div>
 
@@ -581,28 +592,21 @@
             const protocol = document.getElementById('sen-protocol').value;
             const pinSelect = document.getElementById('sen-pin-select');
             const pinInput = document.getElementById('sen-pin-input');
-
+            
             const analogContainer = document.getElementById('analog-thresh-container');
             const digitalContainer = document.getElementById('digital-thresh-container');
+            const i2cContainer = document.getElementById('i2c-profile-container');
             const calibContainer = document.getElementById('analog-calib-container');
-
-            if (protocol === 'digital') {
-                analogContainer.style.display = 'none';
-                digitalContainer.style.display = 'block';
-            } else {
-                analogContainer.style.display = 'block';
-                digitalContainer.style.display = 'none';
-            }
-            
-            if (protocol === 'analog') {
-                calibContainer.style.display = 'block';
-            } else {
-                calibContainer.style.display = 'none';
-            }
             
             if (protocol === 'analog') {
                 pinSelect.style.display = 'block';
                 pinInput.style.display = 'none';
+                
+                i2cContainer.style.display = 'none';
+                calibContainer.style.display = 'flex';
+                analogContainer.style.display = 'flex'; 
+                digitalContainer.style.display = 'none';
+                
                 pinSelect.innerHTML = '';
                 senPinMap[protocol].forEach(pin => {
                     const option = document.createElement('option');
@@ -613,6 +617,12 @@
             } else if (protocol === 'digital') {
                 pinSelect.style.display = 'block';
                 pinInput.style.display = 'none';
+                
+                i2cContainer.style.display = 'none';
+                calibContainer.style.display = 'none';
+                analogContainer.style.display = 'none';
+                digitalContainer.style.display = 'block';
+                
                 pinSelect.innerHTML = '';
                 senPinMap[protocol].forEach(pin => {
                     const option = document.createElement('option');
@@ -620,9 +630,14 @@
                     option.text = `Pin D${pin}`;
                     pinSelect.appendChild(option);
                 });
-            } else {
+            } else if (protocol === 'i2c') {
                 pinSelect.style.display = 'none';
                 pinInput.style.display = 'block';
+                
+                i2cContainer.style.display = 'flex'; 
+                calibContainer.style.display = 'none';
+                analogContainer.style.display = 'flex';
+                digitalContainer.style.display = 'none';
             }
         }
 
@@ -636,6 +651,16 @@
 
             let tLow = null;
             let tHigh = null;
+            let pName = null;
+            let dKey = null;
+          
+            if (protocol === 'i2c') {
+                pName = document.getElementById('sen-i2c-profile').value;
+                dKey = document.getElementById('sen-i2c-datakey').value;
+                if (!pName || !dKey) {
+                    alert("I2C 드라이버와 추출할 데이터를 모두 선택하세요!"); return;
+                }
+            }
 
             if (protocol === 'digital') {
                 tHigh = parseInt(document.getElementById('sen-digital-trigger').value);
@@ -653,14 +678,26 @@
                 threshold_low: tLow,
                 threshold_high: tHigh,
                 multiplier: document.getElementById('sen-multiplier').value ? parseFloat(document.getElementById('sen-multiplier').value) : 1.0,
-                offset: document.getElementById('sen-offset').value ? parseFloat(document.getElementById('sen-offset').value) : 0.0
+                offset: document.getElementById('sen-offset').value ? parseFloat(document.getElementById('sen-offset').value) : 0.0,
+                profile_name: pName,
+                data_key: dKey
             };
             socket.emit('add_sensor_request', data);
             
             document.getElementById('sen-name').value = '';
             document.getElementById('sen-multiplier').value = '';
             document.getElementById('sen-offset').value = '';
-            if(protocol === 'i2c') document.getElementById('sen-pin-input').value = '';
+            document.getElementById('sen-datatype').value = '';
+            document.getElementById('sen-unit').value = '';
+            document.getElementById('sen-thresh-low').value = '';
+            document.getElementById('sen-thresh-high').value = '';
+            document.getElementById('sen-digital-trigger').value = 'I2C 센서 드라이버 선택...';
+            if(protocol === 'i2c'){
+              document.getElementById('sen-pin-input').value = '';
+              document.getElementById('sen-i2c-datakey').value = '추출할 데이터 선택...';
+              document.getElementById('sen-i2c-profile').value = '';
+            }
+              
         }
 
         function submitActuator() {
@@ -815,6 +852,45 @@
                 lowInput.disabled = true; lowInput.value = ''; highInput.disabled = false;
             } else if (dir === 'LOW') {
                 lowInput.disabled = false; highInput.disabled = true; highInput.value = '';
+            }
+        }
+
+        let availableI2CProfiles = {};
+
+        // 페이지 켜지면 서버에 I2C 프로필 목록 달라고 요청
+        socket.on('connect', () => {
+            socket.emit('client_ready', { status: "connected" });
+            socket.emit('request_i2c_profiles', {}); // 🚀 요청 전송
+        });
+
+        // 서버가 프로필 목록을 보내주면 드롭다운 렌더링
+        socket.on('update_i2c_profiles', function(data) {
+            availableI2CProfiles = data;
+            const profileSelect = document.getElementById('sen-i2c-profile');
+            profileSelect.innerHTML = '<option value="">I2C 센서 드라이버 선택...</option>';
+            
+            Object.keys(data).forEach(profileName => {
+                profileSelect.innerHTML += `<option value="${profileName}">${profileName}</option>`;
+            });
+        });
+
+        function onI2CProfileChange() {
+            const selectedProfile = document.getElementById('sen-i2c-profile').value;
+            const keySelect = document.getElementById('sen-i2c-datakey');
+            const pinInput = document.getElementById('sen-pin-input');
+            
+            keySelect.innerHTML = '<option value="">추출할 데이터 선택...</option>';
+            
+            if (selectedProfile && availableI2CProfiles[selectedProfile]) {
+                const profileInfo = availableI2CProfiles[selectedProfile];
+                
+                // auto fill default addr
+                pinInput.value = profileInfo.default_addr;
+                
+                // drop-down extract values
+                profileInfo.outputs.forEach(outputKey => {
+                    keySelect.innerHTML += `<option value="${outputKey}">${outputKey}</option>`;
+                });
             }
         }
     </script>

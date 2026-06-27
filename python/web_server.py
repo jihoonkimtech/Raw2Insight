@@ -8,6 +8,8 @@ Purpose      : Manage WebUI and broadcast data to frontend
 """
 from arduino.app_utils import *
 from arduino.app_bricks.web_ui import WebUI
+from sensors import load_sensor_profiles
+I2C_PROFILES = load_sensor_profiles()
 
 class WebServer:
     def __init__(self, db_manager):
@@ -24,7 +26,17 @@ class WebServer:
         self.ui.on_message('add_actuator_request', self.on_add_actuator)
         self.ui.on_message('delete_device_request', self.on_delete_device)
         self.ui.on_message('change_sensitivity', self.on_change_sensitivity)
+        self.ui.on_message('request_i2c_profiles', self.on_request_i2c_profiles)
         print("[DEBUG] [WebServer] WebUI successfully started. Listening on port 7000.")
+
+    def on_request_i2c_profiles(self, sid, data):
+        profiles_data = {}
+        for name, inst in I2C_PROFILES.items():
+            profiles_data[name] = {
+                "default_addr": inst.default_addr,
+                "outputs": inst.outputs
+            }
+        self.ui.send_message('update_i2c_profiles', profiles_data)
 
     def on_add_sensor(self, sid, data):
         print(f"[DEBUG] [WebServer] Received Sensor Config: {data}")
@@ -37,7 +49,9 @@ class WebServer:
             data.get('threshold_low'),
             data.get('threshold_high'),
             data.get('multiplier', 1.0),
-            data.get('offset', 0.0)
+            data.get('offset', 0.0),
+            data.get('profile_name'), 
+            data.get('data_key')
         )
         # refresh frontend
         self.ui.send_message('device_list_updated', {'type': 'sensor'})

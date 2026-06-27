@@ -31,7 +31,7 @@ class DBManager:
             CREATE TABLE IF NOT EXISTS sensor_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME,
-                sensor_value INTEGER
+                sensor_value REAL
             )
         ''')
         self.conn.commit()
@@ -49,7 +49,9 @@ class DBManager:
             "threshold_low": "REAL",    # lower threshold
             "threshold_high": "REAL",    # higher threshold
             "multiplier": "REAL",
-            "offset": "REAL"
+            "offset": "REAL",
+            "profile_name": "TEXT", # sensor driver name
+            "data_key": "TEXT" # extract data lables
         }
         self.config_db.create_table("sensors", sensor_cols)
 
@@ -70,7 +72,10 @@ class DBManager:
         print("[DEBUG] [DBManager] Device Config Tables Checked/Initialized.")
 
     # sensor management
-    def add_sensor(self, name, protocol, pin, data_type="", unit="", threshold_low=None, threshold_high=None, multiplier=1.0, offset=0.0):
+    def add_sensor(self, name, protocol, pin, data_type="", unit="", 
+                   threshold_low=None, threshold_high=None, 
+                   multiplier=1.0, offset=0.0, 
+                   profile_name=None, data_key=None):
         data = {
             "name": name, "protocol": protocol, "pin": pin, 
             "data_type": data_type, "unit": unit, "sensitivity": 0.1,
@@ -81,6 +86,10 @@ class DBManager:
             data["threshold_low"] = threshold_low
         if threshold_high is not None:
             data["threshold_high"] = threshold_high
+        if profile_name is not None:
+            data["profile_name"] = profile_name
+        if data_key is not None:
+            data["data_key"] = data_key
             
         self.config_db.store("sensors", data)
         print(f"[DEBUG] [DBManager] Sensor Added: {name} (Low: {threshold_low}, High: {threshold_high})(Mult: {multiplier}, Offset: {offset})")
@@ -106,7 +115,7 @@ class DBManager:
         # store date with timestamp
         self.ts_store.write_sample(
             measure=sensor_name,
-            value=value, 
+            value=float(value), 
             measurement_name=self.measurement_name
         )
         print(f"[DEBUG] [DBManager] Inserted [{sensor_name}] -> Value: {value}")

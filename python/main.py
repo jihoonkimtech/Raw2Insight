@@ -15,6 +15,7 @@ from db_manager import DBManager
 from comm_manager import CommManager
 from web_server import WebServer
 from ai_manager import AIManager
+from sensors import load_sensor_profiles
 
 print("Raw2Insight System Starting...")
 
@@ -23,6 +24,8 @@ db = DBManager()
 comm = CommManager()
 web = WebServer(db)
 ai = AIManager()
+I2C_PROFILES = load_sensor_profiles() 
+print(f"[DEBUG] [Main] Loaded I2C profiles: {list(I2C_PROFILES.keys())}")
 
 # cycle count for debug
 cycle_count = 0
@@ -43,6 +46,7 @@ def loop():
             return
             
         payload = {}
+        i2c_cache = {}
         
         for sensor in sensors:
             s_name = sensor['name']
@@ -53,62 +57,80 @@ def loop():
             s_sens = sensor.get('sensitivity', 0.1)
             s_multiplier = sensor.get('multiplier', 1.0)
             s_offset = sensor.get('offset', 0.0)
-
-            # read sensor data
-            sensor_val = comm.read_sensor_dynamic(s_protocol, s_pin)
-
-            if sensor_val is not None:
-                if s_protocol == 'analog':
-                    sensor_val = int((sensor_val * s_multiplier) + s_offset)
-                
-            # store in DB
-            db.insert_data(sensor_val, s_name)
-
-            # load raw data
-            raw_rows = db.get_raw_data(sensor_name=s_name, limit=20)
-
-            # digital is not require MA
-            if s_protocol == 'digital':
-                formatted_rows = raw_rows
-                values_only = [r[1] for r in raw_rows] if raw_rows else []
-            else:
-                # load aggregated data
-                formatted_rows, values_only = db.get_aggregated_data(sensor_name=s_name, limit=20)
-    
-            is_anomaly, direction, score = ai.detect(s_name, values_only, s_protocol, s_sens)
-
             s_thresh_low = sensor.get('threshold_low')
             s_thresh_high = sensor.get('threshold_high')
-            latest_val = values_only[0] if values_only else (raw_rows[0][1] if raw_rows else None)
+            s_profile = sensor.get('profile_name')
+            s_data_key = sensor.get('data_key')
 
+            calibrated_value = None
+
+            # read sensor data
+            print(f"[DEBUG] [Main] Sensing start ({s_protocol}, {s_pin})")
+            if s_protocol == 'analog':
+                raw_value = comm.read_sensor_dynamic(s_protocol, s_pin)
+                if raw_value is not None:
+                    calibrated_value = (raw_value * s_multiplier) + s_offset
+            elif s_protocol == 'digital':
+                raw_value = comm.read_sensor_dynamic(s_protocol, s_pin)
+                calibrated_value = raw_value
+            elif s_protocol == 'i2c': 
+                # check drive
+                profile_instance = I2C_PROFILES.get(s_profile)
+                if profile_info := profile_instance:
+                    # if there is not cache? req read_bytes
+                    if s_pin not in i2c_cache:
+                        print(f"[DEBUG] [Main] Can't find cache of {s_pin} sensor. Read start")
+                        raw_bytes = comm.read_sensor_dynamic('i2c', s_pin, read_bytes=profile_info.read_bytes)
+                        i2c_cache[s_pin] = profile_info.parse(raw_bytes)
+                    
+                    # extract 'data_key' value
+                    parsed_dict = i2c_cache[s_pin]
+                    if parsed_dict and s_data_key in parsed_dict:
+                        calibrated_value = parsed_dict[s_data_key]
+                    else:
+                        print(f"[ERROR] [Main] Can't find {s_data_key} KEY!")
+                           
+                else:
+                    # for debug
+                    print(f"[DEBUG] [Main] Call debug i2c functionY!")
+                    calibrated_value = comm.read_sensor_dynamic('i2c', s_pin)
+
+                
+            # store in DB
+            db.insert_data(calibrated_value, s_name)
+
+            # load data
+            formatted_rows, values_only = db.get_aggregated_data(s_name)
+            raw_rows = db.get_raw_data(s_name)
+
+            # anomaly decision
             manual_intensity = 0.0
             is_manual_anomaly = False
-            
+            is_anomaly = False
+            direction = "NORMAL"
+            score = 0.0
 
             if s_protocol == 'digital':
+                # digital sensor is not require anomaly check
                 trigger_val = s_thresh_high if s_thresh_high is not None else 1
-                if latest_val is not None:
-                    is_anomaly = (latest_val == trigger_val)
-                else:
-                    is_anomaly = False
-                
-                direction = "HIGH" if trigger_val == 1 else "LOW" 
+                is_anomaly = (calibrated_value == trigger_val)
+                direction = "HIGH" if trigger_val == 1 else "LOW"
                 score = -1.0 if is_anomaly else 1.0
             else:
+                # analog, i2c : do Isolation Forest
                 is_anomaly, direction, score = ai.detect(s_name, values_only, s_protocol, s_sens)
 
-                if latest_val is not None:
-                    if s_thresh_high is not None and latest_val > s_thresh_high:
-                        is_anomaly, is_manual_anomaly, direction = True, True, "HIGH"
-                        gap = latest_val - s_thresh_high
-                        max_gap = s_thresh_high * 0.2 if s_thresh_high != 0 else 10.0
-                        manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
-                        
-                    elif s_thresh_low is not None and latest_val < s_thresh_low:
-                        is_anomaly, is_manual_anomaly, direction = True, True, "LOW"
-                        gap = s_thresh_low - latest_val
-                        max_gap = s_thresh_low * 0.2 if s_thresh_low != 0 else 10.0
-                        manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
+                if s_thresh_high is not None and calibrated_value > s_thresh_high:
+                    is_anomaly, is_manual_anomaly, direction = True, True, "HIGH"
+                    gap = calibrated_value - s_thresh_high
+                    max_gap = s_thresh_high * 0.2 if s_thresh_high != 0 else 10.0
+                    manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
+                    
+                elif s_thresh_low is not None and calibrated_value < s_thresh_low:
+                    is_anomaly, is_manual_anomaly, direction = True, True, "LOW"
+                    gap = s_thresh_low - calibrated_value
+                    max_gap = s_thresh_low * 0.2 if s_thresh_low != 0 else 10.0
+                    manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
 
             linked_acts_info = []
             for act in actuators:
