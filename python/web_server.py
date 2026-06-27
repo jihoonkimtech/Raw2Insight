@@ -33,7 +33,9 @@ class WebServer:
             data['protocol'], 
             data['pin'], 
             data.get('data_type', ''), 
-            data.get('unit', '')
+            data.get('unit', ''),
+            data.get('threshold_low'),
+            data.get('threshold_high')
         )
         # refresh frontend
         self.ui.send_message('device_list_updated', {'type': 'sensor'})

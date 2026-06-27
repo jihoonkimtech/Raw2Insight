@@ -70,8 +70,40 @@ def loop():
                 # load aggregated data
                 formatted_rows, values_only = db.get_aggregated_data(sensor_name=s_name, limit=20)
     
-            
             is_anomaly, direction, score = ai.detect(s_name, values_only, s_protocol, s_sens)
+
+            s_thresh_low = sensor.get('threshold_low')
+            s_thresh_high = sensor.get('threshold_high')
+            latest_val = values_only[0] if values_only else (raw_rows[0][1] if raw_rows else None)
+
+            manual_intensity = 0.0
+            is_manual_anomaly = False
+            
+
+            if s_protocol == 'digital':
+                trigger_val = s_thresh_high if s_thresh_high is not None else 1
+                if latest_val is not None:
+                    is_anomaly = (latest_val == trigger_val)
+                else:
+                    is_anomaly = False
+                
+                direction = "HIGH" if trigger_val == 1 else "LOW" 
+                score = -1.0 if is_anomaly else 1.0
+            else:
+                is_anomaly, direction, score = ai.detect(s_name, values_only, s_protocol, s_sens)
+
+                if latest_val is not None:
+                    if s_thresh_high is not None and latest_val > s_thresh_high:
+                        is_anomaly, is_manual_anomaly, direction = True, True, "HIGH"
+                        gap = latest_val - s_thresh_high
+                        max_gap = s_thresh_high * 0.2 if s_thresh_high != 0 else 10.0
+                        manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
+                        
+                    elif s_thresh_low is not None and latest_val < s_thresh_low:
+                        is_anomaly, is_manual_anomaly, direction = True, True, "LOW"
+                        gap = s_thresh_low - latest_val
+                        max_gap = s_thresh_low * 0.2 if s_thresh_low != 0 else 10.0
+                        manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
 
             linked_acts_info = []
             for act in actuators:
@@ -91,13 +123,13 @@ def loop():
                             # calc output value
                             if act['control_type'] == 'pwm':
                                 max_severity = 0.5
-                                intensity = min(1.0, abs(score) / max_severity)
+                                intensity = manual_intensity if is_manual_anomaly else min(1.0, abs(score) / 0.5)
 
                                 # normal to base_target
                                 val_diff = base_target - act['normal_val']
                                 target_val = act['normal_val'] + int(val_diff * intensity)
 
-                                print(f"[DEBUG] PWM Proportional: Score({score:.3f}) -> Intensity({intensity*100:.1f}%) -> Normal({act['normal_val']}) -> Output({target_val})")
+                                print(f"[DEBUG] PWM Proportional: Intensity({intensity*100:.1f}%) -> Output({target_val})")
                             else:
                                 # case of digital device
                                 target_val = base_target
@@ -120,7 +152,9 @@ def loop():
                 'unit': s_unit,
                 'protocol': s_protocol,
                 'actuators': linked_acts_info,
-                'score': score
+                'score': score,
+                'threshold_low': s_thresh_low,
+                'threshold_high': s_thresh_high
             }
 
         # for device monitoring

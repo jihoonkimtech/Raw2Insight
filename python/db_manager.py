@@ -45,7 +45,9 @@ class DBManager:
             "pin": "TEXT",       # 'A0', '0x68', '2'
             "data_type": "TEXT", # 'Temperature' ...
             "unit": "TEXT",       # '°C', 'lux' ...
-            "sensitivity": "REAL" # 0.1, 0.2 ...
+            "sensitivity": "REAL", # 0.1, 0.2 ...
+            "threshold_low": "REAL",    # lower threshold
+            "threshold_high": "REAL"    # higher threshold
         }
         self.config_db.create_table("sensors", sensor_cols)
 
@@ -66,10 +68,19 @@ class DBManager:
         print("[DEBUG] [DBManager] Device Config Tables Checked/Initialized.")
 
     # sensor management
-    def add_sensor(self, name, protocol, pin, data_type="", unit=""):
-        data = {"name": name, "protocol": protocol, "pin": pin, "data_type": data_type, "unit": unit, "sensitivity": 0.1}
+    def add_sensor(self, name, protocol, pin, data_type="", unit="", threshold_low=None, threshold_high=None):
+        data = {
+            "name": name, "protocol": protocol, "pin": pin, 
+            "data_type": data_type, "unit": unit, "sensitivity": 0.1
+        }
+
+        if threshold_low is not None:
+            data["threshold_low"] = threshold_low
+        if threshold_high is not None:
+            data["threshold_high"] = threshold_high
+            
         self.config_db.store("sensors", data)
-        print(f"[DEBUG] [DBManager] Sensor Added: {name} ({data_type}, {unit})")
+        print(f"[DEBUG] [DBManager] Sensor Added: {name} (Low: {threshold_low}, High: {threshold_high})")
 
     # output device management
     def add_actuator(self, name, control_type, pin, normal_val, low_val, high_val, trigger_dir, linked_sensor_id):
@@ -99,7 +110,6 @@ class DBManager:
         return value
 
     def get_latest_data(self, limit=20):
-        
         print(f"[DEBUG] [DBManager] Fetching latest {limit} records from InfluxDB...")
         try:
             # load N latest data from DB (in 1 hour)
