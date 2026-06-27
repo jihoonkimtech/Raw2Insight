@@ -286,6 +286,7 @@
                 const isAnomaly = data.alert;
         
                 const sType = data.data_type || 'Data';
+                const sScore = data.score;
                 const sUnit = data.unit || '';
                 const sProtocol = data.protocol || 'analog';
                 const isDigital = (sProtocol === 'digital');
@@ -405,7 +406,7 @@
 
                 if (isAnomaly) {
                     badge.className = 'status-badge status-alert';
-                    badge.innerText = '⚠️ 이상 탐지됨!';
+                    badge.innerText = (sScore === -1) ? '⚠️ 이상 탐지됨!':`⚠️ 이상 탐지됨! (${sScore.toFixed(2)})`;
                     chartObj.data.datasets[targetDatasetIndex].borderColor = '#dc3545';
                     chartObj.data.datasets[targetDatasetIndex].backgroundColor = 'rgba(220, 53, 69, 0.2)';
                     valDisplay.style.color = '#dc3545';
@@ -469,7 +470,8 @@
                     if (linkedActs.length > 0) {
                         linkedActs.forEach(act => {
                             const actClass = act.active ? 'act-on' : 'act-off';
-                            const actText = act.active ? '⚡ 작동중 (ON)' : '💤 대기중 (OFF)';
+                            const outVal = act.pwm_val !== undefined ? act.pwm_val : (act.active ? 'ON' : 'OFF');
+                            const actText = act.active ? `⚡ 작동중 (출력: ${outVal})` : `💤 대기중 (출력: OFF)`;
                             actHTML += `<div class="act-box ${actClass}">⚙️ ${act.name}: ${actText}</div>`;
                         });
                     } else {
@@ -625,13 +627,26 @@
             });
 
             // sensor table
-            let senTableHTML = "<tr><th>ID</th><th>이름</th><th>종류/단위</th><th>프로토콜</th><th>핀/주소</th><th>관리</th></tr>";
+            let senTableHTML = "<tr><th>ID</th><th>이름</th><th>종류/단위</th><th>프로토콜</th><th>핀/주소</th><th>AI 민감도 (1~30%)</th><th>관리</th></tr>";
             let linkOptionsHTML = '<option value="">연동 센서 선택...</option>';
+            
             sensors.forEach(sen => {
+                const isDigital = (sen.protocol === 'digital');
+                const sensVal = sen.sensitivity || 0.1; // 기본 10%
+                const sensPercent = Math.round(sensVal * 100);
+                
+                // disable slider if is digital sensor
+                const sliderHTML = isDigital 
+                    ? `<span style="color:#aaa; font-size:0.9em;">디지털 (룰베이스)</span>` 
+                    : `<input type="range" min="0.01" max="0.30" step="0.01" value="${sensVal}" 
+                              onchange="changeSensitivity(${sen.id}, this.value)" style="width:70px; vertical-align:middle; cursor:pointer;">
+                       <span id="sens-val-${sen.id}" style="display:inline-block; width:35px; text-align:right; font-weight:bold;">${sensPercent}%</span>`;
+
                 senTableHTML += `<tr>
                     <td>${sen.id}</td><td>${sen.name}</td>
                     <td>${sen.data_type || 'N/A'} <span style="color:#888;">(${sen.unit || '-'})</span></td>
                     <td>${sen.protocol}</td><td>${sen.pin}</td>
+                    <td>${sliderHTML}</td>
                     <td><button class="delete-btn" onclick="deleteDevice('sensor', ${sen.id})">❌ 삭제</button></td>
                 </tr>`;
                 linkOptionsHTML += `<option value="${sen.id}">${sen.name}</option>`;
@@ -653,6 +668,12 @@
             });
             document.getElementById('actuatorListTable').innerHTML = actTableHTML;
         });
+
+        function changeSensitivity(id, val) {
+            document.getElementById(`sens-val-${id}`).innerText = Math.round(val * 100) + '%';
+            // send to backend
+            socket.emit('change_sensitivity', { id: id, sensitivity: parseFloat(val) });
+        }
 
         function switchTab(event, tabId) {
             document.querySelectorAll('.tab-content').forEach(function(content) {

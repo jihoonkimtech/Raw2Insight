@@ -39,11 +39,11 @@ class CommManager:
                 return Bridge.call("read_i2c", pin_or_addr)
                 
             else:
-                print(f"[ERROR] [CommManager] 알 수 없는 프로토콜: {protocol}")
+                print(f"[ERROR] [CommManager] Unknown Protocol: {protocol}")
                 return 0
                 
         except Exception as e:
-            print(f"[ERROR] [CommManager] 통신 실패 ({protocol} - {pin_or_addr}): {e}")
+            print(f"[ERROR] [CommManager] Communication Fail ({protocol} - {pin_or_addr}): {e}")
             return 0
 
     def send_control(self, param):
@@ -52,14 +52,12 @@ class CommManager:
         Bridge.call("set_cooler", param)
 
     def set_actuator_dynamic(self, control_type, pin, value):
-        """
-        제어 방식(디지털/PWM)에 따라 MCU의 적절한 출력 함수를 호출합니다.
-        """
         try:
             pin_num = int(pin)
+            print(f"[ERROR] [CommManager] Actuator control ({control_type} - {pin}) [{value}]")
             if control_type == 'digital_out':
                 return Bridge.call("write_digital", pin_num, value)
             elif control_type == 'pwm':
                 return Bridge.call("write_pwm", pin_num, value)
         except Exception as e:
-            print(f"[ERROR] [CommManager] 액추에이터 제어 실패 ({control_type} - {pin}): {e}")
+            print(f"[ERROR] [CommManager] Actuator control Fail ({control_type} - {pin}): {e}")

@@ -50,6 +50,7 @@ def loop():
             s_pin = sensor['pin']
             s_type = sensor.get('data_type', 'Data')
             s_unit = sensor.get('unit', '')
+            s_sens = sensor.get('sensitivity', 0.1)
 
             # read sensor data
             sensor_val = comm.read_sensor_dynamic(s_protocol, s_pin)
@@ -57,9 +58,6 @@ def loop():
             if sensor_val is not None:
                 # store in DB
                 db.insert_data(sensor_val, s_name)
-
-            # load aggregated data
-            formatted_rows, values_only = db.get_aggregated_data(sensor_name=s_name, limit=20)
 
             # load raw data
             raw_rows = db.get_raw_data(sensor_name=s_name, limit=20)
@@ -69,22 +67,46 @@ def loop():
                 formatted_rows = raw_rows
                 values_only = [r[1] for r in raw_rows] if raw_rows else []
             else:
+                # load aggregated data
                 formatted_rows, values_only = db.get_aggregated_data(sensor_name=s_name, limit=20)
     
-            # check anomaly
-            is_anomaly = ai.detect(s_name, values_only, s_protocol)
+            
+            is_anomaly, direction, score = ai.detect(s_name, values_only, s_protocol, s_sens)
 
             linked_acts_info = []
             for act in actuators:
                 if act['linked_sensor_id'] == sensor['id']:
-                    # if anomaly detected? using trigger_logic
-                    target_val = act['trigger_logic'] if is_anomaly else 0
                     
+                    target_val = 0 # default is off(0)
+
+                    if is_anomaly:
+                        # if anomaly case cause by data increase
+                        #if direction == "HIGH":
+                        if 1:
+                            # actuator type is pwm
+                            if act['control_type'] == 'pwm':
+                                # change Score to PWM
+                                max_severity = 0.5
+                                intensity = min(1.0, abs(score) / max_severity)
+
+                                target_val = int(act['trigger_logic'] * intensity)
+                                
+                                # lower bound of active actuator
+                                if target_val < 100: 
+                                    target_val = 100
+
+                                print(f"[DEBUG] PWM Proportional: Score({score:.3f}) -> Intensity({intensity*100:.1f}%) -> Output({target_val})")                
+                            # actuator type is digital
+                            else:
+                                target_val = act['trigger_logic'] 
+                        
+                    # target_val send to MCU
                     comm.set_actuator_dynamic(act['control_type'], act['pin'], target_val)
                     
                     linked_acts_info.append({
                         'name': act['name'],
-                        'active': is_anomaly
+                        'active': is_anomaly,
+                        'pwm_val': target_val # for debug
                     })
             
             # carrying in payload
@@ -95,7 +117,8 @@ def loop():
                 'data_type': s_type,
                 'unit': s_unit,
                 'protocol': s_protocol,
-                'actuators': linked_acts_info
+                'actuators': linked_acts_info,
+                'score': score
             }
 
         # for device monitoring

@@ -23,6 +23,7 @@ class WebServer:
         self.ui.on_message('add_sensor_request', self.on_add_sensor)
         self.ui.on_message('add_actuator_request', self.on_add_actuator)
         self.ui.on_message('delete_device_request', self.on_delete_device)
+        self.ui.on_message('change_sensitivity', self.on_change_sensitivity)
         print("[DEBUG] [WebServer] WebUI successfully started. Listening on port 7000.")
 
     def on_add_sensor(self, sid, data):
@@ -95,3 +96,13 @@ class WebServer:
             
         # send refresh cmd after delete
         self.ui.send_message('device_list_updated', {'type': f'deleted_{device_type}'})
+        
+    def on_change_sensitivity(self, sid, data):
+        sensor_id = data.get('id')
+        sensitivity = data.get('sensitivity', 0.1)
+        
+        print(f"[DEBUG] [WebServer] EVENT: Change Sensitivity -> ID: {sensor_id}, Val: {sensitivity}")
+        self.db.update_sensor_sensitivity(sensor_id, sensitivity)
+        
+        # update
+        self.on_request_device_list(sid, {})

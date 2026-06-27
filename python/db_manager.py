@@ -44,7 +44,8 @@ class DBManager:
             "protocol": "TEXT", # 'analog', 'i2c', 'digital_in'
             "pin": "TEXT",       # 'A0', '0x68', '2'
             "data_type": "TEXT", # 'Temperature' ...
-            "unit": "TEXT"       # '°C', 'lux' ...
+            "unit": "TEXT",       # '°C', 'lux' ...
+            "sensitivity": "REAL" # 0.1, 0.2 ...
         }
         self.config_db.create_table("sensors", sensor_cols)
 
@@ -62,7 +63,7 @@ class DBManager:
 
     # sensor management
     def add_sensor(self, name, protocol, pin, data_type="", unit=""):
-        data = {"name": name, "protocol": protocol, "pin": pin, "data_type": data_type, "unit": unit}
+        data = {"name": name, "protocol": protocol, "pin": pin, "data_type": data_type, "unit": unit, "sensitivity": 0.1}
         self.config_db.store("sensors", data)
         print(f"[DEBUG] [DBManager] Sensor Added: {name} ({data_type}, {unit})")
 
@@ -180,3 +181,19 @@ class DBManager:
         except Exception as e:
             print(f"[ERROR] [DBManager] Error reading raw samples: {e}")
             return []
+            
+    def update_sensor_sensitivity(self, sensor_id, sensitivity):
+        try:
+            # if not exist sensitivity column? create
+            try:
+                self.config_db.execute_sql("ALTER TABLE sensors ADD COLUMN sensitivity REAL DEFAULT 0.1", None)
+            except:
+                pass
+                
+            # update sensitivity
+            self.config_db.update("sensors", {"sensitivity": sensitivity}, f"id = {sensor_id}")
+            
+            print(f"[DEBUG] [DBManager] Sensor ID {sensor_id} sensitivity updated to {sensitivity}")
+            
+        except Exception as e:
+            print(f"[ERROR] [DBManager] Error updating sensitivity using SQLStore: {e}")
