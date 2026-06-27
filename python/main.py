@@ -76,36 +76,38 @@ def loop():
             linked_acts_info = []
             for act in actuators:
                 if act['linked_sensor_id'] == sensor['id']:
-                    
-                    target_val = 0 # default is off(0)
+                    target_val = act.get('normal_val', 0)
+                    act_dir = act.get('trigger_dir', 'BOTH')
+                    is_active = False
 
                     if is_anomaly:
-                        # if anomaly case cause by data increase
-                        #if direction == "HIGH":
-                        if 1:
-                            # actuator type is pwm
+                        # check direction of anomaly
+                        if (direction == "HIGH" and act_dir in ["HIGH", "BOTH"]) or \
+                           (direction == "LOW" and act_dir in ["LOW", "BOTH"]):
+                            
+                            is_active = True
+                            base_target = act['high_val'] if direction == "HIGH" else act['low_val']
+
+                            # calc output value
                             if act['control_type'] == 'pwm':
-                                # change Score to PWM
                                 max_severity = 0.5
                                 intensity = min(1.0, abs(score) / max_severity)
 
-                                target_val = int(act['trigger_logic'] * intensity)
-                                
-                                # lower bound of active actuator
-                                if target_val < 100: 
-                                    target_val = 100
+                                # normal to base_target
+                                val_diff = base_target - act['normal_val']
+                                target_val = act['normal_val'] + int(val_diff * intensity)
 
-                                print(f"[DEBUG] PWM Proportional: Score({score:.3f}) -> Intensity({intensity*100:.1f}%) -> Output({target_val})")                
-                            # actuator type is digital
+                                print(f"[DEBUG] PWM Proportional: Score({score:.3f}) -> Intensity({intensity*100:.1f}%) -> Normal({act['normal_val']}) -> Output({target_val})")
                             else:
-                                target_val = act['trigger_logic'] 
+                                # case of digital device
+                                target_val = base_target
                         
                     # target_val send to MCU
                     comm.set_actuator_dynamic(act['control_type'], act['pin'], target_val)
                     
                     linked_acts_info.append({
                         'name': act['name'],
-                        'active': is_anomaly,
+                        'active': is_active,
                         'pwm_val': target_val # for debug
                     })
             

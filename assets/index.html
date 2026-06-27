@@ -172,13 +172,28 @@
                             </div>
                             <div class="form-group form-row-inner">
                                 <div>
-                                    <input type="number" id="act-trigger" placeholder="이상 시 출력 (0~255)">
+                                    <input type="number" id="act-normal" placeholder="평상시 (0~255)">
                                 </div>
                                 <div>
-                                    <select id="act-link">
-                                        <option value="">연동 센서 선택...</option>
+                                    <select id="act-dir">
+                                        <option value="BOTH">양방향 (높음/낮음 이상 모두)</option>
+                                        <option value="HIGH">단방향 (높음 이상일 때만)</option>
+                                        <option value="LOW">단방향 (낮음 이상일 때만)</option>
                                     </select>
                                 </div>
+                            </div>
+                            <div class="form-group form-row-inner">
+                                <div>
+                                    <input type="number" id="act-low" placeholder="낮음 이상 시 (0~255)">
+                                </div>
+                                <div>
+                                    <input type="number" id="act-high" placeholder="높음 이상 시 (0~255)">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <select id="act-link">
+                                    <option value="">연동 센서 선택...</option>
+                                </select>
                             </div>
                             <button class="form-btn" onclick="submitActuator()">기기 추가</button>
                         </div>
@@ -573,10 +588,9 @@
 
         function submitActuator() {
             const name = document.getElementById('act-name').value;
-            const triggerLogic = document.getElementById('act-trigger').value;
             const linkedId = document.getElementById('act-link').value;
 
-            if(!name || triggerLogic === '' || linkedId === '') {
+            if(!name || linkedId === '') {
                 alert("모든 필드를 정확히 입력하세요. (연동 센서 선택 필수)"); return;
             }
 
@@ -584,13 +598,19 @@
                 name: name,
                 control_type: document.getElementById('act-type').value,
                 pin: document.getElementById('act-pin').value,
-                trigger_logic: parseInt(triggerLogic),
+                normal_val: parseInt(document.getElementById('act-normal').value || 0),
+                low_val: parseInt(document.getElementById('act-low').value || 0),
+                high_val: parseInt(document.getElementById('act-high').value || 0),
+                trigger_dir: document.getElementById('act-dir').value,
                 linked_sensor_id: parseInt(linkedId)
             };
             socket.emit('add_actuator_request', data);
             
+            // init
             document.getElementById('act-name').value = '';
-            document.getElementById('act-trigger').value = '';
+            document.getElementById('act-normal').value = '';
+            document.getElementById('act-low').value = '';
+            document.getElementById('act-high').value = '';
             document.getElementById('act-link').value = '';
         }
 
@@ -655,14 +675,15 @@
             document.getElementById('act-link').innerHTML = linkOptionsHTML;
 
             // actuator table
-            let actTableHTML = "<tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀</th><th>동작값</th><th>연동 센서</th><th>관리</th></tr>";
+            let actTableHTML = "<tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀</th><th>조건(방향)</th><th>평상/낮음/높음</th><th>연동 센서</th><th>관리</th></tr>";
             actuators.forEach(act => {
-                // sensor mapping
                 const linkedSen = sensors.find(s => s.id === act.linked_sensor_id);
                 const linkedName = linkedSen ? linkedSen.name : `ID:${act.linked_sensor_id} (삭제됨)`;
+                const vals = `${act.normal_val} / ${act.low_val} / ${act.high_val}`;
+                
                 actTableHTML += `<tr>
                     <td>${act.id}</td><td>${act.name}</td><td>${act.control_type}</td>
-                    <td>${act.pin}</td><td>${act.trigger_logic}</td><td>${linkedName}</td>
+                    <td>${act.pin}</td><td>${act.trigger_dir}</td><td>${vals}</td><td>${linkedName}</td>
                     <td><button class="delete-btn" onclick="deleteDevice('actuator', ${act.id})">❌ 삭제</button></td>
                 </tr>`;
             });
