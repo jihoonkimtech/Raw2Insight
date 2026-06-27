@@ -35,7 +35,9 @@ class WebServer:
             data.get('data_type', ''), 
             data.get('unit', ''),
             data.get('threshold_low'),
-            data.get('threshold_high')
+            data.get('threshold_high'),
+            data.get('multiplier', 1.0),
+            data.get('offset', 0.0)
         )
         # refresh frontend
         self.ui.send_message('device_list_updated', {'type': 'sensor'})

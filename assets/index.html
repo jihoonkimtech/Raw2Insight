@@ -42,6 +42,9 @@
         .form-row-inner { display: flex; gap: 10px; width: 100%; }
         .form-row-inner > div { flex: 1; }
 
+        .form-inner { display: block; gap: 10px; width: 100%; }
+        .form-inner > div { flex: 1; }
+
         .form-btn { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; }
         .form-btn:hover { background-color: #0056b3; }
         
@@ -164,6 +167,14 @@
                                         <option value="1">이상 상태: 1 (HIGH) 일 때 동작</option>
                                         <option value="0">이상 상태: 0 (LOW) 일 때 동작</option>
                                     </select>
+                                </div>
+                                <div class="form-group form-inner" id="analog-thresh-container" style="display:none;">
+                                    <div><input type="number" step="0.1" id="sen-thresh-low" placeholder="하한 이상 기준 (선택)"></div>
+                                    <div><input type="number" step="0.1" id="sen-thresh-high" placeholder="상한 이상 기준 (선택)"></div>
+                                </div>
+                                <div class="form-group form-inner" id="analog-calib-container" style="display:none;">
+                                    <div><input type="number" step="0.01" id="sen-multiplier" placeholder="보정 곱(a) : 기본 1.0"></div>
+                                    <div><input type="number" step="0.01" id="sen-offset" placeholder="보정 합(b) : 기본 0.0"></div>
                                 </div>
                             </div>
                             <button class="form-btn" onclick="submitSensor()">센서 추가</button>
@@ -446,7 +457,8 @@
 
                 if (isAnomaly) {
                     badge.className = 'status-badge status-alert';
-                    badge.innerText = (sScore === -1) ? '⚠️ 이상 탐지됨!':`⚠️ 이상 탐지됨! (${sScore.toFixed(2)})`;
+                    badge.innerText = '⚠️ 이상 탐지됨! ';
+                    badge.innerText += (sScore === -1) ? '' : (sScore === 0) ? ' (사용자 지정)' : ` (${sScore.toFixed(2)})`;
                     chartObj.data.datasets[targetDatasetIndex].borderColor = '#dc3545';
                     chartObj.data.datasets[targetDatasetIndex].backgroundColor = 'rgba(220, 53, 69, 0.2)';
                     valDisplay.style.color = '#dc3545';
@@ -572,13 +584,20 @@
 
             const analogContainer = document.getElementById('analog-thresh-container');
             const digitalContainer = document.getElementById('digital-thresh-container');
+            const calibContainer = document.getElementById('analog-calib-container');
 
             if (protocol === 'digital') {
                 analogContainer.style.display = 'none';
                 digitalContainer.style.display = 'block';
             } else {
-                analogContainer.style.display = 'flex';
+                analogContainer.style.display = 'block';
                 digitalContainer.style.display = 'none';
+            }
+            
+            if (protocol === 'analog') {
+                calibContainer.style.display = 'block';
+            } else {
+                calibContainer.style.display = 'none';
             }
             
             if (protocol === 'analog') {
@@ -632,11 +651,15 @@
                 data_type: document.getElementById('sen-datatype').value,
                 unit: document.getElementById('sen-unit').value,
                 threshold_low: tLow,
-                threshold_high: tHigh
+                threshold_high: tHigh,
+                multiplier: document.getElementById('sen-multiplier').value ? parseFloat(document.getElementById('sen-multiplier').value) : 1.0,
+                offset: document.getElementById('sen-offset').value ? parseFloat(document.getElementById('sen-offset').value) : 0.0
             };
             socket.emit('add_sensor_request', data);
             
             document.getElementById('sen-name').value = '';
+            document.getElementById('sen-multiplier').value = '';
+            document.getElementById('sen-offset').value = '';
             if(protocol === 'i2c') document.getElementById('sen-pin-input').value = '';
         }
 
@@ -701,7 +724,7 @@
             });
 
             // sensor table
-            let senTableHTML = "<tr><th>ID</th><th>이름</th><th>종류/단위</th><th>프로토콜</th><th>핀/주소</th><th>임계값 (하/상)</th><th>AI 민감도 (1~30%)</th><th>관리</th></tr>";
+            let senTableHTML = "<tr><th>ID</th><th>이름</th><th>종류/단위</th><th>프로토콜</th><th>핀/주소</th><th>임계값(하/상)</th><th>보정식(a,b)</th><th>AI 민감도</th><th>관리</th></tr>";
             let linkOptionsHTML = '<option value="">연동 센서 선택...</option>';
             
             sensors.forEach(sen => {
@@ -729,12 +752,16 @@
                     threshText = `${tLow} / ${tHigh}`;
                 }
 
+                const mult = sen.multiplier !== undefined ? sen.multiplier : 1.0;
+                const off = sen.offset !== undefined ? sen.offset : 0.0;
+                const calibText = sen.protocol === 'analog' ? `x${mult} +${off}` : '-';
+
                 senTableHTML += `<tr>
                     <td>${sen.id}</td><td>${sen.name}</td>
                     <td>${sen.data_type || 'N/A'} <span style="color:#888;">(${sen.unit || '-'})</span></td>
                     <td>${sen.protocol}</td><td>${sen.pin}</td>
                     <td style="font-weight: bold; color: #555;">${threshText}</td>
-                    <td>${sliderHTML}</td>
+                    <td style="font-size: 0.9em; color: #007bff;">${calibText}</td> <td>${sliderHTML}</td>
                     <td><button class="delete-btn" onclick="deleteDevice('sensor', ${sen.id})">❌ 삭제</button></td>
                 </tr>`;
                 linkOptionsHTML += `<option value="${sen.id}">${sen.name}</option>`;

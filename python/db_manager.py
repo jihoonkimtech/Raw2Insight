@@ -47,7 +47,9 @@ class DBManager:
             "unit": "TEXT",       # '°C', 'lux' ...
             "sensitivity": "REAL", # 0.1, 0.2 ...
             "threshold_low": "REAL",    # lower threshold
-            "threshold_high": "REAL"    # higher threshold
+            "threshold_high": "REAL",    # higher threshold
+            "multiplier": "REAL",
+            "offset": "REAL"
         }
         self.config_db.create_table("sensors", sensor_cols)
 
@@ -68,10 +70,11 @@ class DBManager:
         print("[DEBUG] [DBManager] Device Config Tables Checked/Initialized.")
 
     # sensor management
-    def add_sensor(self, name, protocol, pin, data_type="", unit="", threshold_low=None, threshold_high=None):
+    def add_sensor(self, name, protocol, pin, data_type="", unit="", threshold_low=None, threshold_high=None, multiplier=1.0, offset=0.0):
         data = {
             "name": name, "protocol": protocol, "pin": pin, 
-            "data_type": data_type, "unit": unit, "sensitivity": 0.1
+            "data_type": data_type, "unit": unit, "sensitivity": 0.1,
+            "multiplier": multiplier, "offset": offset
         }
 
         if threshold_low is not None:
@@ -80,7 +83,7 @@ class DBManager:
             data["threshold_high"] = threshold_high
             
         self.config_db.store("sensors", data)
-        print(f"[DEBUG] [DBManager] Sensor Added: {name} (Low: {threshold_low}, High: {threshold_high})")
+        print(f"[DEBUG] [DBManager] Sensor Added: {name} (Low: {threshold_low}, High: {threshold_high})(Mult: {multiplier}, Offset: {offset})")
 
     # output device management
     def add_actuator(self, name, control_type, pin, normal_val, low_val, high_val, trigger_dir, linked_sensor_id):

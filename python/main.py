@@ -51,13 +51,18 @@ def loop():
             s_type = sensor.get('data_type', 'Data')
             s_unit = sensor.get('unit', '')
             s_sens = sensor.get('sensitivity', 0.1)
+            s_multiplier = sensor.get('multiplier', 1.0)
+            s_offset = sensor.get('offset', 0.0)
 
             # read sensor data
             sensor_val = comm.read_sensor_dynamic(s_protocol, s_pin)
 
             if sensor_val is not None:
-                # store in DB
-                db.insert_data(sensor_val, s_name)
+                if s_protocol == 'analog':
+                    sensor_val = int((sensor_val * s_multiplier) + s_offset)
+                
+            # store in DB
+            db.insert_data(sensor_val, s_name)
 
             # load raw data
             raw_rows = db.get_raw_data(sensor_name=s_name, limit=20)
