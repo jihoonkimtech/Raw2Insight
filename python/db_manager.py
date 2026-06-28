@@ -180,11 +180,15 @@ class DBManager:
             return [], []
             
     def delete_sensor(self, sensor_id):
-        self.config_db.delete("sensors", f"id = {sensor_id}")
+        # using parameterized query to prevent sql injection
+        query = "DELETE FROM sensors WHERE id = ?"
+        self.config_db.execute_sql(query, (sensor_id,))
         print(f"[DEBUG] [DBManager] Sensor ID {sensor_id} Deleted.")
 
     def delete_actuator(self, actuator_id):
-        self.config_db.delete("actuators", f"id = {actuator_id}")
+        # using parameterized query to prevent sql injection
+        query = "DELETE FROM actuators WHERE id = ?"
+        self.config_db.execute_sql(query, (actuator_id,))
         print(f"[DEBUG] [DBManager] Actuator ID {actuator_id} Deleted.")
 
     def get_raw_data(self, sensor_name, limit=20):
@@ -219,8 +223,9 @@ class DBManager:
             except:
                 pass
                 
-            # update sensitivity
-            self.config_db.update("sensors", {"sensitivity": sensitivity}, f"id = {sensor_id}")
+            # using parameterized query instead of vulnerable update method
+            query = "UPDATE sensors SET sensitivity = ? WHERE id = ?"
+            self.config_db.execute_sql(query, (sensitivity, sensor_id))
             
             print(f"[DEBUG] [DBManager] Sensor ID {sensor_id} sensitivity updated to {sensitivity}")
             

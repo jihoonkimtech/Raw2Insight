@@ -35,10 +35,13 @@ sensor_prev_manual = {} # added for hysteresis tracking
 actuator_mem = {}
 web.actuator_mem = actuator_mem
 
+# persistent variable for last known fine i2c data
+i2c_last_known_good = {}
+
 # cycle count for debug
 cycle_count = 0
 
-# background thread helper for webhook
+# added background thread helper for webhook to prevent main loop blocking
 def fire_webhook_async(url, payload_json, mem, messenger):
     def task():
         try:
@@ -99,32 +102,39 @@ def loop():
                 raw_value = comm.read_sensor_dynamic(s_protocol, s_pin)
                 calibrated_value = raw_value
             elif s_protocol == 'i2c': 
-                # check drive
+                # check driver
                 profile_instance = I2C_PROFILES.get(s_profile)
                 if profile_info := profile_instance:
-                    # if there is not cache? req read_bytes
                     if s_pin not in i2c_cache:
                         print(f"[DEBUG] [Main] Can't find cache of {s_pin} sensor. Read start")
                         raw_bytes = comm.read_sensor_dynamic('i2c', s_pin, read_bytes=profile_info.read_bytes)
-                        i2c_cache[s_pin] = profile_info.parse(raw_bytes)
+                        parsed_data = profile_info.parse(raw_bytes)
+                        
+                        if parsed_data:
+                            # physical read success: update current cache and persistent fallback
+                            i2c_cache[s_pin] = parsed_data
+                            i2c_last_known_good[s_pin] = parsed_data
+                        else:
+                            # physical read failed: use last known good value (fallback)
+                            print(f"[WARN] [Main] I2C read failed for {s_pin}. Using fallback data.")
+                            i2c_cache[s_pin] = i2c_last_known_good.get(s_pin, {})
                     
-                    # extract 'data_key' value
+                    # extract 'data_key' value from cache (which now has fresh or fallback data)
                     parsed_dict = i2c_cache[s_pin]
                     if parsed_dict and s_data_key in parsed_dict:
                         calibrated_value = parsed_dict[s_data_key]
                     else:
                         print(f"[ERROR] [Main] Can't find {s_data_key} KEY!")
-
+                           
                 else:
-                    # for debug
-                    print(f"[DEBUG] [Main] Call debug i2c functionY!")
+                    print(f"[DEBUG] [Main] Call debug i2c function!")
                     calibrated_value = comm.read_sensor_dynamic('i2c', s_pin)
 
                 
             # store in DB
             db.insert_data(calibrated_value, s_name)
 
-            # load data (fetch more for AI context, UI gets sliced later)
+            # load data (improved: fetch more for AI context, UI gets sliced later)
             formatted_rows, values_only = db.get_aggregated_data(s_name, limit=300)
             raw_rows = db.get_raw_data(s_name, limit=60)
 
