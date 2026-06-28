@@ -66,7 +66,8 @@ class DBManager:
             "normal_val": "INTEGER",   # normal state output
             "low_val": "INTEGER",      # lower threshold output
             "high_val": "INTEGER",     # higher threshold output
-            "trigger_dir": "TEXT"     # 'BOTH', 'HIGH', 'LOW'
+            "trigger_dir": "TEXT",     # 'BOTH', 'HIGH', 'LOW'
+            "extra_params": "TEXT"     # for virtual
         }
         self.config_db.create_table("actuators", actuator_cols)
         print("[DEBUG] [DBManager] Device Config Tables Checked/Initialized.")
@@ -95,12 +96,13 @@ class DBManager:
         print(f"[DEBUG] [DBManager] Sensor Added: {name} (Low: {threshold_low}, High: {threshold_high})(Mult: {multiplier}, Offset: {offset})")
 
     # output device management
-    def add_actuator(self, name, control_type, pin, normal_val, low_val, high_val, trigger_dir, linked_sensor_id):
+    def add_actuator(self, name, control_type, pin, normal_val, low_val, high_val, trigger_dir, linked_sensor_id, extra_params="{}"):
         data = {
             "name": name, "control_type": control_type, 
             "pin": pin, "normal_val": normal_val, 
             "low_val": low_val, "high_val": high_val,
-            "trigger_dir": trigger_dir, "linked_sensor_id": linked_sensor_id
+            "trigger_dir": trigger_dir, "linked_sensor_id": linked_sensor_id,
+            "extra_params": extra_params
         }
         self.config_db.store("actuators", data)
         print(f"[DEBUG] [DBManager] Actuator Added: {name} (Pin {pin})")

@@ -93,6 +93,9 @@
         .health-safe { background-color: #28a745; }
         .health-warn { background-color: #ffc107; color: #000; }
         .health-danger { background-color: #dc3545; }
+
+        .act-virtual-on { background-color: #6f42c1; color: #fff; border-color: #59339d; box-shadow: 0 0 8px rgba(111, 66, 193, 0.6); }
+        .act-virtual-off { background-color: #e0d8f0; color: #6f42c1; border-color: #c9bcf0; }
     </style>
 </head>
 <body>
@@ -200,31 +203,36 @@
                                 <select id="act-type" onchange="updateActuatorPinOptions()">
                                     <option value="digital_out">일반 디지털 출력</option>
                                     <option value="pwm">PWM (속도/밝기 제어)</option>
+                                    <option value="virtual_counter">💾 가상 장치: 이상 누적 카운터</option>
+                                    <option value="virtual_timer">⏱️ 가상 장치: 이상 지속 타이머</option>
+                                    <option value="virtual_latch">🧲 가상 장치: 위험 상태 래치(고정)</option>
+                                    <option value="virtual_webhook">📡 가상 장치: 웹훅(HTTP) 알림</option>
                                 </select>
                             </div>
                             <div class="form-group">
                                 <select id="act-pin"></select>
                             </div>
-                            <div class="form-group form-row-inner">
-                                <div>
-                                    <input type="number" id="act-normal" placeholder="평상시 (0~255)">
+                            
+                            <div id="virtual-params-container" style="display:none; background:#f4f0ff; padding:10px; border-radius:5px; margin-bottom:10px;">
+                            </div>
+
+                            <div id="physical-configs">
+                                <div class="form-group form-row-inner">
+                                    <div><input type="number" id="act-normal" placeholder="평상시 (0~255)"></div>
+                                    <div>
+                                        <select id="act-dir">
+                                            <option value="BOTH">양방향 (높음/낮음 이상 모두)</option>
+                                            <option value="HIGH">단방향 (높음 이상일 때만)</option>
+                                            <option value="LOW">단방향 (낮음 이상일 때만)</option>
+                                        </select>
+                                    </div>
                                 </div>
-                                <div>
-                                    <select id="act-dir" onchange="updateActuatorDirUI()">
-                                        <option value="BOTH">양방향 (높음/낮음 이상 모두)</option>
-                                        <option value="HIGH">단방향 (높음 이상일 때만)</option>
-                                        <option value="LOW">단방향 (낮음 이상일 때만)</option>
-                                    </select>
+                                <div class="form-group form-row-inner">
+                                    <div><input type="number" id="act-low" placeholder="낮음 이상 시 (0~255)"></div>
+                                    <div><input type="number" id="act-high" placeholder="높음 이상 시 (0~255)"></div>
                                 </div>
                             </div>
-                            <div class="form-group form-row-inner">
-                                <div>
-                                    <input type="number" id="act-low" placeholder="낮음 이상 시 (0~255)">
-                                </div>
-                                <div>
-                                    <input type="number" id="act-high" placeholder="높음 이상 시 (0~255)">
-                                </div>
-                            </div>
+                            
                             <div class="form-group">
                                 <select id="act-link">
                                     <option value="">연동 센서 선택...</option>
@@ -538,10 +546,15 @@
         
                     if (linkedActs.length > 0) {
                         linkedActs.forEach(act => {
-                            const actClass = act.active ? 'act-on' : 'act-off';
-                            const outVal = act.pwm_val !== undefined ? act.pwm_val : (act.active ? 'ON' : 'OFF');
-                            const actText = act.active ? `⚡ 작동중 (출력: ${outVal})` : `💤 대기중 (출력: OFF)`;
-                            actHTML += `<div class="act-box ${actClass}">⚙️ ${act.name}: ${actText}</div>`;
+                            if (act.is_virtual) {
+                                const vClass = act.active ? 'act-virtual-on' : 'act-virtual-off';
+                                actHTML += `<div class="act-box ${vClass}">💡 ${act.name}: ${act.val}</div>`;
+                            } else {
+                                const actClass = act.active ? 'act-on' : 'act-off';
+                                const outVal = act.pwm_val !== undefined ? act.pwm_val : (act.active ? 'ON' : 'OFF');
+                                const actText = act.active ? `⚡ 작동중 (출력: ${outVal})` : `💤 대기중`;
+                                actHTML += `<div class="act-box ${actClass}">⚙️ ${act.name}: ${actText}</div>`;
+                            }
                         });
                     } else {
                         actHTML = `<div class="act-box act-off" style="opacity: 0.5;">연동된 출력 장치 없음</div>`;
@@ -578,14 +591,38 @@
         function updateActuatorPinOptions() {
             const type = document.getElementById('act-type').value;
             const pinSelect = document.getElementById('act-pin');
-            pinSelect.innerHTML = ''; 
-            
-            actPinMap[type].forEach(pin => {
+            const physConfig = document.getElementById('physical-configs');
+            const vParams = document.getElementById('virtual-params-container');
+
+            pinSelect.innerHTML = '';
+
+            if (type.startsWith('virtual_')) {
+                physConfig.style.display = 'none';
+                vParams.style.display = 'block';
+
                 const option = document.createElement('option');
-                option.value = pin;
-                option.text = `Pin ${pin}${type === 'pwm' ? ' (~)' : ''}`;
+                option.value = 'VIRTUAL';
+                option.text = '가상 핀 (내부 메모리 연산)';
                 pinSelect.appendChild(option);
-            });
+
+                // for virtual device
+                if (type === 'virtual_timer') {
+                    vParams.innerHTML = '<input type="number" id="v-duration" placeholder="지속 시간 (예: 5 입력 시 5초 이상 지속될 때 트리거)">';
+                } else if (type === 'virtual_webhook') {
+                    vParams.innerHTML = '<input type="text" id="v-url" placeholder="호출할 웹훅 URL (Slack, Discord 등)">';
+                } else {
+                    vParams.innerHTML = '<span style="color:#6f42c1; font-size:0.9em; font-weight:bold;">✨ 이 가상 장치는 추가 설정 없이 바로 동작합니다.</span>';
+                }
+            } else {
+                physConfig.style.display = 'block';
+                vParams.style.display = 'none';
+                actPinMap[type].forEach(pin => {
+                    const option = document.createElement('option');
+                    option.value = pin;
+                    option.text = `Pin ${pin}${type === 'pwm' ? ' (~)' : ''}`;
+                    pinSelect.appendChild(option);
+                });
+            }
         }
 
         function updateSensorPinOptions() {
@@ -702,30 +739,34 @@
 
         function submitActuator() {
             const name = document.getElementById('act-name').value;
-            const linkedId = document.getElementById('act-link').value;
+            const type = document.getElementById('act-type').value;
+            const pin = document.getElementById('act-pin').value;
+            const linkId = document.getElementById('act-link').value;
+            
+            if(!name || !pin || !linkId) { alert("입력값을 확인하세요."); return; }
 
-            if(!name || linkedId === '') {
-                alert("모든 필드를 정확히 입력하세요. (연동 센서 선택 필수)"); return;
+            let extraParams = {};
+            let normal=0, low=0, high=0, dir='BOTH';
+
+            if (type.startsWith('virtual_')) {
+                // vertual device
+                if (type === 'virtual_timer') extraParams['duration'] = parseInt(document.getElementById('v-duration').value || 5);
+                if (type === 'virtual_webhook') extraParams['url'] = document.getElementById('v-url').value;
+            } else {
+                // actual device
+                normal = document.getElementById('act-normal').value;
+                low = document.getElementById('act-low').value;
+                high = document.getElementById('act-high').value;
+                dir = document.getElementById('act-dir').value;
             }
 
             const data = {
-                name: name,
-                control_type: document.getElementById('act-type').value,
-                pin: document.getElementById('act-pin').value,
-                normal_val: parseInt(document.getElementById('act-normal').value || 0),
-                low_val: parseInt(document.getElementById('act-low').value || 0),
-                high_val: parseInt(document.getElementById('act-high').value || 0),
-                trigger_dir: document.getElementById('act-dir').value,
-                linked_sensor_id: parseInt(linkedId)
+                name: name, control_type: type, pin: pin,
+                normal_val: normal || 0, low_val: low || 0, high_val: high || 0, trigger_dir: dir,
+                linked_sensor_id: linkId,
+                extra_params: JSON.stringify(extraParams) // 🚀 JSON 문자열로 변환해서 전송
             };
             socket.emit('add_actuator_request', data);
-            
-            // init
-            document.getElementById('act-name').value = '';
-            document.getElementById('act-normal').value = '';
-            document.getElementById('act-low').value = '';
-            document.getElementById('act-high').value = '';
-            document.getElementById('act-link').value = '';
         }
 
         // delete registered sensor from DB
@@ -761,48 +802,67 @@
             });
 
             // sensor table
-            let senTableHTML = "<tr><th>ID</th><th>이름</th><th>종류/단위</th><th>프로토콜</th><th>핀/주소</th><th>임계값(하/상)</th><th>보정식(a,b)</th><th>AI 민감도</th><th>관리</th></tr>";
+            let senTableHTML = "<tr><th>ID</th><th>이름</th><th>종류 / 단위</th><th>연결 (핀)</th><th>작동 규칙 및 AI 설정</th><th>관리</th></tr>";
             let linkOptionsHTML = '<option value="">연동 센서 선택...</option>';
             
             sensors.forEach(sen => {
                 const isDigital = (sen.protocol === 'digital');
-                const sensVal = sen.sensitivity || 0.1; // 기본 10%
+                const sensVal = sen.sensitivity || 0.1;
                 const sensPercent = Math.round(sensVal * 100);
                 
-                // disable slider if is digital sensor
-                const sliderHTML = isDigital 
-                    ? `<span style="color:#aaa; font-size:0.9em;">디지털 (룰베이스)</span>` 
-                    : `<input type="range" min="0.01" max="0.30" step="0.01" value="${sensVal}" 
-                              onchange="changeSensitivity(${sen.id}, this.value)" style="width:70px; vertical-align:middle; cursor:pointer;">
-                       <span id="sens-val-${sen.id}" style="display:inline-block; width:35px; text-align:right; font-weight:bold;">${sensPercent}%</span>`;
+                // protocol and pin
+                const protocolBadge = sen.protocol.toUpperCase();
+                const pinDisplay = `${protocolBadge} (${sen.pin})`;
 
-                const tLow = (sen.threshold_low !== null && sen.threshold_low !== undefined) ? sen.threshold_low : '-';
-                const tHigh = (sen.threshold_high !== null && sen.threshold_high !== undefined) ? sen.threshold_high : '-';
-
-                let threshText = '';
+                // threshold setting
+                let threshHTML = '';
                 if (isDigital) {
                     const trigger = (sen.threshold_high !== null && sen.threshold_high !== undefined) ? sen.threshold_high : 1;
-                    threshText = trigger === 1 ? '<span style="color:#dc3545">1 (HIGH)</span>' : '<span style="color:#007bff">0 (LOW)</span>';
+                    threshHTML = trigger === 1 
+                        ? `<span style="background:#ffe6e6; color:#dc3545; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold;">Trigger: HIGH(1)</span>` 
+                        : `<span style="background:#e6f0ff; color:#007bff; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold;">Trigger: LOW(0)</span>`;
                 } else {
                     const tLow = (sen.threshold_low !== null && sen.threshold_low !== undefined) ? sen.threshold_low : '-';
                     const tHigh = (sen.threshold_high !== null && sen.threshold_high !== undefined) ? sen.threshold_high : '-';
-                    threshText = `${tLow} / ${tHigh}`;
+                    threshHTML = `<span style="color:#555; font-size:0.9em;">수동범위: <b>${tLow} ~ ${tHigh}</b></span>`;
                 }
 
+                // analog calibration
                 const mult = sen.multiplier !== undefined ? sen.multiplier : 1.0;
                 const off = sen.offset !== undefined ? sen.offset : 0.0;
-                const calibText = sen.protocol === 'analog' ? `x${mult} +${off}` : '-';
+                const calibHTML = (!isDigital && (mult !== 1.0 || off !== 0.0))
+                    ? `<span style="background:#f1f3f5; color:#666; padding:2px 6px; border-radius:4px; font-size:0.85em; margin-left:5px;">보정: y = ${mult}x + ${off}</span>`
+                    : '';
+
+                // AI sensitivity
+                const sliderHTML = isDigital 
+                    ? `<span style="color:#999; font-size:0.85em; margin-left:5px;">[Rule-Base]</span>` 
+                    : `<span style="margin-left:8px; font-size:0.85em; color:#28a745;">AI 민감도: 
+                        <input type="range" min="0.01" max="0.30" step="0.01" value="${sensVal}" 
+                               onchange="changeSensitivity(${sen.id}, this.value)" style="width:60px; vertical-align:middle; cursor:pointer;">
+                        <b id="sens-val-${sen.id}">${sensPercent}%</b>
+                       </span>`;
+
+                // another info
+                const rulesAndAIColumn = `
+                    <div style="display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; text-align:left;">
+                        ${threshHTML}
+                        ${calibHTML}
+                        ${sliderHTML}
+                    </div>
+                `;
 
                 senTableHTML += `<tr>
-                    <td>${sen.id}</td><td>${sen.name}</td>
-                    <td>${sen.data_type || 'N/A'} <span style="color:#888;">(${sen.unit || '-'})</span></td>
-                    <td>${sen.protocol}</td><td>${sen.pin}</td>
-                    <td style="font-weight: bold; color: #555;">${threshText}</td>
-                    <td style="font-size: 0.9em; color: #007bff;">${calibText}</td> <td>${sliderHTML}</td>
-                    <td><button class="delete-btn" onclick="deleteDevice('sensor', ${sen.id})">❌ 삭제</button></td>
+                    <td>${sen.id}</td>
+                    <td style="font-weight:bold; color:#333;">${sen.name}</td>
+                    <td>${sen.data_type || 'N/A'} <span style="color:#888; font-size:0.9em;">(${sen.unit || '-'})</span></td>
+                    <td style="font-family:monospace; font-size:0.95em; color:#495057;">${pinDisplay}</td>
+                    <td>${rulesAndAIColumn}</td> <td><button class="delete-btn" onclick="deleteDevice('sensor', ${sen.id})">❌ 삭제</button></td>
                 </tr>`;
+                
                 linkOptionsHTML += `<option value="${sen.id}">${sen.name}</option>`;
             });
+            
             document.getElementById('sensorListTable').innerHTML = senTableHTML;
             document.getElementById('act-link').innerHTML = linkOptionsHTML;
 
@@ -857,13 +917,13 @@
 
         let availableI2CProfiles = {};
 
-        // 페이지 켜지면 서버에 I2C 프로필 목록 달라고 요청
+        // req i2c profiles
         socket.on('connect', () => {
             socket.emit('client_ready', { status: "connected" });
             socket.emit('request_i2c_profiles', {}); // 🚀 요청 전송
         });
 
-        // 서버가 프로필 목록을 보내주면 드롭다운 렌더링
+        // drop-down i2c profiles
         socket.on('update_i2c_profiles', function(data) {
             availableI2CProfiles = data;
             const profileSelect = document.getElementById('sen-i2c-profile');

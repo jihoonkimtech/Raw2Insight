@@ -9,6 +9,7 @@ Purpose      : Manage WebUI and broadcast data to frontend
 from arduino.app_utils import *
 from arduino.app_bricks.web_ui import WebUI
 from sensors import load_sensor_profiles
+
 I2C_PROFILES = load_sensor_profiles()
 
 class WebServer:
@@ -61,7 +62,8 @@ class WebServer:
         self.db.add_actuator(
             data['name'], data['control_type'], data['pin'], 
             data['normal_val'], data['low_val'], data['high_val'], 
-            data['trigger_dir'], data['linked_sensor_id']
+            data['trigger_dir'], data['linked_sensor_id'],
+            data['extra_params']
         )
         # refresh frontend
         self.ui.send_message('device_list_updated', {'type': 'actuator'})
