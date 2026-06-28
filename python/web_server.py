@@ -28,6 +28,7 @@ class WebServer:
         self.ui.on_message('delete_device_request', self.on_delete_device)
         self.ui.on_message('change_sensitivity', self.on_change_sensitivity)
         self.ui.on_message('request_i2c_profiles', self.on_request_i2c_profiles)
+        self.ui.on_message('reset_virtual', self.on_reset_virtual)
         print("[DEBUG] [WebServer] WebUI successfully started. Listening on port 7000.")
 
     def on_request_i2c_profiles(self, sid, data):
@@ -127,3 +128,12 @@ class WebServer:
         
         # update
         self.on_request_device_list(sid, {})
+        
+    def on_reset_virtual(self, sid, data):
+        act_id = str(data.get('id'))
+        if hasattr(self, 'virtual_device_mem') and act_id in self.virtual_device_mem:
+            # force reset
+            self.virtual_device_mem[act_id]['latched'] = False
+            self.virtual_device_mem[act_id]['count'] = 0
+            self.virtual_device_mem[act_id]['status_text'] = "✔️ 안전 (수동 초기화됨)"
+            print(f"[DEBUG] [WebServer] 가상 장치(ID: {act_id}) 수동 초기화 완료.")

@@ -31,6 +31,7 @@ print(f"[DEBUG] [Main] Loaded I2C profiles: {list(I2C_PROFILES.keys())}")
 
 sensor_prev_states = {}
 virtual_device_mem = {}
+web.virtual_device_mem = virtual_device_mem
 
 # cycle count for debug
 cycle_count = 0
@@ -198,21 +199,40 @@ def loop():
                         elif act_type == 'virtual_webhook':
                             if just_triggered:
                                 url = extra.get('url', '')
+                                messenger = extra.get('messenger', 'discord')
+                                
                                 if url:
                                     try:
-                                        # timeout을 짧게 줘서 메인 루프 지연 방지
-                                        urllib.request.urlopen(url, timeout=1.0)
-                                        mem['status_text'] = "✅ 전송 완료"
+                                        msg = f"🚨 **[Raw2Insight 엣지 알림]**\n`{s_name}` 센서 이상 패턴 감지!"
+                                        
+                                        if messenger == 'discord':
+                                            payload = json.dumps({"content": msg}).encode('utf-8')
+                                        elif messenger == 'slack':
+                                            payload = json.dumps({"text": msg}).encode('utf-8')
+                                        else:
+                                            payload = json.dumps({"message": msg}).encode('utf-8')
+                                            
+                                        req = urllib.request.Request(
+                                            url, 
+                                            data=payload, 
+                                            headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+                                        )
+                                        urllib.request.urlopen(req, timeout=2.0)
+                                        mem['status_text'] = f"✅ {messenger.upper()} 전송 완료"
                                     except Exception as e:
-                                        mem['status_text'] = "❌ 전송 실패 (Timeout)"
+                                        mem['status_text'] = f"❌ 전송 실패 ({messenger})"
+                                        print(f"[ERROR] Webhook failed: {e}")
+                            
                             is_active = just_triggered
-                            if not is_active and mem['status_text'] == '':
+                            if not is_active and '전송 완료' not in mem['status_text']:
                                 mem['status_text'] = "✔️ 대기중"
 
                         # virtual device payload
                         linked_acts_info.append({
+                            'id': act['id'],
                             'name': act['name'],
                             'active': is_active,
+                            'control_type': act_type,
                             'val': mem['status_text'],
                             'is_virtual': True
                         })

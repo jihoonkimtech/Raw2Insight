@@ -96,6 +96,31 @@
 
         .act-virtual-on { background-color: #6f42c1; color: #fff; border-color: #59339d; box-shadow: 0 0 8px rgba(111, 66, 193, 0.6); }
         .act-virtual-off { background-color: #e0d8f0; color: #6f42c1; border-color: #c9bcf0; }
+
+        .btn-reset {
+            background-color: #ff5e57;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.75em;
+            font-weight: bold;
+            transition: background 0.3s;
+            margin-left: 10px;
+        }
+        .btn-reset:hover { background-color: #d63031; }
+        .dynamic-input {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 14px;
+            outline: none;
+        }
+        .dynamic-input:focus { border-color: #6f42c1; }
     </style>
 </head>
 <body>
@@ -548,7 +573,12 @@
                         linkedActs.forEach(act => {
                             if (act.is_virtual) {
                                 const vClass = act.active ? 'act-virtual-on' : 'act-virtual-off';
-                                actHTML += `<div class="act-box ${vClass}">💡 ${act.name}: ${act.val}</div>`;
+                                let resetBtn = "";
+                                const type = act.control_type.toLowerCase();
+                                if ((type.includes("latch") || type.includes("counter")) && act.active) {
+                                    resetBtn = `<button class="btn-reset" onclick="socket.emit('reset_virtual', {id: ${act.id}})">초기화</button>`;
+                                }
+                                actHTML += `<div class="act-box ${vClass}">💡 ${act.name}: ${act.val}${resetBtn}</div>`;
                             } else {
                                 const actClass = act.active ? 'act-on' : 'act-off';
                                 const outVal = act.pwm_val !== undefined ? act.pwm_val : (act.active ? 'ON' : 'OFF');
@@ -607,9 +637,16 @@
 
                 // for virtual device
                 if (type === 'virtual_timer') {
-                    vParams.innerHTML = '<input type="number" id="v-duration" placeholder="지속 시간 (예: 5 입력 시 5초 이상 지속될 때 트리거)">';
+                    vParams.innerHTML = '<input type="number" class="dynamic-input" id="v-duration" placeholder="지속 시간 (예: 5 입력 시 5초 연속 이상일 때 트리거)">';
                 } else if (type === 'virtual_webhook') {
-                    vParams.innerHTML = '<input type="text" id="v-url" placeholder="호출할 웹훅 URL (Slack, Discord 등)">';
+                    vParams.innerHTML = `
+                        <select class="dynamic-input" id="v-messenger" style="margin-bottom: 5px; width: 100%;">
+                            <option value="discord">Discord (디스코드)</option>
+                            <option value="slack">Slack (슬랙)</option>
+                            <option value="custom">Custom (일반 POST)</option>
+                        </select>
+                        <input type="text" class="dynamic-input" id="v-url" placeholder="웹훅 URL 입력">
+                    `;
                 } else {
                     vParams.innerHTML = '<span style="color:#6f42c1; font-size:0.9em; font-weight:bold;">✨ 이 가상 장치는 추가 설정 없이 바로 동작합니다.</span>';
                 }
@@ -623,6 +660,8 @@
                     pinSelect.appendChild(option);
                 });
             }
+
+
         }
 
         function updateSensorPinOptions() {
@@ -764,8 +803,16 @@
                 name: name, control_type: type, pin: pin,
                 normal_val: normal || 0, low_val: low || 0, high_val: high || 0, trigger_dir: dir,
                 linked_sensor_id: linkId,
-                extra_params: JSON.stringify(extraParams) // 🚀 JSON 문자열로 변환해서 전송
+                extra_params: JSON.stringify(extraParams)
             };
+
+            if (type.startsWith('virtual_')) {
+                if (type === 'virtual_timer') extraParams['duration'] = parseInt(document.getElementById('v-duration').value || 5);
+                if (type === 'virtual_webhook') {
+                    extraParams['messenger'] = document.getElementById('v-messenger').value;
+                    extraParams['url'] = document.getElementById('v-url').value;
+                }
+            }
             socket.emit('add_actuator_request', data);
         }
 
