@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Raw2Insight AI Dashboard</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -13,9 +15,11 @@
         .status-safe { background-color: #28a745; }
         .status-alert { background-color: #dc3545; animation: blink 1s infinite; }
         
-        table { border-collapse: collapse; width: 100%; text-align: center; margin-top: 20px; }
+        /* responsive table wrapper */
+        .table-responsive { width: 100%; overflow-x: auto; display: block; margin-top: 20px; }
+        table { border-collapse: collapse; width: 100%; text-align: center; min-width: 600px; }
         th, td { border: 1px solid #ccc; padding: 8px; vertical-align: middle; }
-        th { background-color: #f8f9fa; }
+        th { background-color: #f8f9fa; word-break: keep-all; }
         .chart-container { position: relative; width: 100%; height: 300px; margin-top: 20px; }
 
         @keyframes blink { 50% { opacity: 0.5; } }
@@ -68,8 +72,8 @@
         .act-off { background-color: #e9ecef; color: #6c757d; }
 
         /* tab board */
-        .tab-nav { display: flex; gap: 10px; margin-top: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
-        .tab-btn { background-color: #f8f9fa; border: 1px solid #ccc; padding: 10px 20px; cursor: pointer; border-radius: 5px 5px 0 0; font-weight: bold; color: #333; transition: 0.3s; }
+        .tab-nav { display: flex; gap: 10px; margin-top: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; flex-wrap: wrap; }
+        .tab-btn { background-color: #f8f9fa; border: 1px solid #ccc; padding: 10px 20px; cursor: pointer; border-radius: 5px 5px 0 0; font-weight: bold; color: #333; transition: 0.3s; flex-grow: 1; }
         .tab-btn.active { background-color: #007bff; color: white; border-color: #007bff; }
         .tab-btn:hover:not(.active) { background-color: #e2e6ea; }
         .tab-content { display: none; animation: fadeIn 0.4s; }
@@ -132,6 +136,17 @@
             outline: none;
         }
         .dynamic-input:focus { border-color: #6f42c1; }
+        
+        /* mobile 1-column layout optimization */
+        @media (max-width: 768px) {
+            #dynamic-charts-container { grid-template-columns: 1fr; }
+            .settings-layout { grid-template-columns: 1fr; }
+            .header { flex-direction: column; align-items: flex-start; gap: 15px; }
+            .sys-health-container { width: 100%; justify-content: space-between; box-sizing: border-box; }
+            .status-badge { width: 100%; text-align: center; box-sizing: border-box; }
+            .flex-row { flex-direction: column; }
+            .form-row-inner { flex-direction: column; }
+        }
     </style>
 </head>
 <body>
@@ -145,7 +160,7 @@
                 <div class="health-item">🖥️ CPU: <span id="cpuVal" class="health-val health-safe">0%</span></div>
                 <div class="health-item">💾 RAM: <span id="ramVal" class="health-val health-safe">0%</span></div>
             </div>
-            <div id="aiStatus" class="status-badge status-safe">상태: 정상 (Normal)</div>
+            <div id="aiStatus" class="status-badge status-safe">상태: 정상</div>
         </div>
         
         <div class="tab-nav">
@@ -171,8 +186,8 @@
 
                             <div class="form-group">
                                 <select id="sen-protocol" onchange="updateSensorPinOptions()">
-                                    <option value="analog">Analog (아날로그)</option>
-                                    <option value="digital">Digital (디지털)</option>
+                                    <option value="analog">아날로그 (Analog)</option>
+                                    <option value="digital">디지털 (Digital)</option>
                                     <option value="i2c">I2C (버스 통신)</option>
                                 </select>
                             </div>
@@ -292,14 +307,18 @@
                     <h3>📋 등록된 기기 목록 (Device DB List)</h3>
                     
                     <h4>입력 장치 (Sensors)</h4>
-                    <table id="sensorListTable">
-                        <tr><th>ID</th><th>이름</th><th>종류/단위</th><th>프로토콜</th><th>핀/주소</th><th>관리</th></tr>
-                    </table>
+                    <div class="table-responsive">
+                        <table id="sensorListTable">
+                            <tr><th>ID</th><th>이름</th><th>종류/단위</th><th>프로토콜</th><th>핀/주소</th><th>관리</th></tr>
+                        </table>
+                    </div>
 
                     <h4 style="margin-top: 20px;">출력 장치 (Actuators)</h4>
-                    <table id="actuatorListTable">
-                        <tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀/대상</th><th>조건 및 출력값</th><th>지연/래치</th><th>연동 센서</th><th>관리</th></tr>
-                    </table>
+                    <div class="table-responsive">
+                        <table id="actuatorListTable">
+                            <tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀/대상</th><th>조건 및 출력값</th><th>지연/래치</th><th>연동 센서</th><th>관리</th></tr>
+                        </table>
+                    </div>
                 </div>
 
             </div>
@@ -379,7 +398,7 @@
                 const rawRows = data.raw_rows || [];
                 const isAnomaly = data.alert;
         
-                const sType = data.data_type || 'Data';
+                const sType = data.data_type || '데이터';
                 const sScore = data.score;
                 const sUnit = data.unit || '';
                 const sProtocol = data.protocol || 'analog';
@@ -391,7 +410,7 @@
                     const panelHTML = `
                         <div id="panel-${sensorName}" style="border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-top: 20px; background: #fff;">
                             <div class="header">
-                                <h3 style="margin:0;">📊 ${sensorName} <span style="font-size:0.7em; color:#666;">(${sType}${isDigital ? ' - Digital' : ''})</span></h3>
+                                <h3 style="margin:0;">📊 ${sensorName} <span style="font-size:0.7em; color:#666;">(${sType}${isDigital ? ' - 디지털' : ''})</span></h3>
                                 <div id="val-${sensorName}" class="current-val" style="font-size:1.05em; font-weight:500; min-width:110px; text-align:center;">-- ${sUnit}</div>
                                 <div id="status-${sensorName}" class="status-badge status-safe">상태: 정상</div>
                             </div>
@@ -413,7 +432,7 @@
                             labels: [],
                             datasets: [
                                 {
-                                    label: isDigital ? '상태 (Digital)' : '원본 (Raw)',
+                                    label: isDigital ? '상태 (디지털)' : '원본 데이터',
                                     data: [],
                                     borderColor: isDigital ? color.border : 'rgba(110, 110, 110, 0.6)',
                                     backgroundColor: isDigital ? color.bg : 'transparent',
@@ -425,22 +444,22 @@
                                     spanGaps: true
                                 },
                                 {
-                                    label: '추세선 (Trend)',
+                                    label: '추세선',
                                     data: [],
                                     borderColor: 'rgba(50, 50, 50, 0.6)',
                                     borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0, spanGaps: true, hidden: isDigital
                                 },
                                 {
-                                    label: '안정값 (Smoothed)',
+                                    label: '안정값',
                                     data: [],
                                     borderColor: color.border, backgroundColor: color.bg, borderWidth: 3, fill: false, tension: 0.18, pointRadius: 2, pointHoverRadius: 4, spanGaps: true, hidden: isDigital
                                 },
                                 {
-                                    label: '상한 (High)',
+                                    label: '상한선',
                                     data: [], borderColor: 'rgba(220, 53, 69, 0.3)', borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0, hidden: isDigital
                                 },
                                 {
-                                    label: '하한 (Low)',
+                                    label: '하한선',
                                     data: [], borderColor: 'rgba(0, 123, 255, 0.3)', borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0, hidden: isDigital
                                 }
                             ]
@@ -484,7 +503,7 @@
                     valDisplay.style.color = '#dc3545';
                 } else {
                     badge.className = 'status-badge status-safe';
-                    badge.innerText = '✅ 정상 (Safe)';
+                    badge.innerText = '✅ 정상';
                     chartObj.data.datasets[targetDatasetIndex].borderColor = chartObj.baseColor.border;
                     chartObj.data.datasets[targetDatasetIndex].backgroundColor = chartObj.baseColor.bg;
                     valDisplay.style.color = chartObj.baseColor.border;
@@ -568,7 +587,7 @@
             } else {
                 document.body.classList.remove('alert-bg');
                 mainBadge.className = 'status-badge status-safe';
-                mainBadge.innerText = '✅ 상태: 정상 (Normal)';
+                mainBadge.innerText = '✅ 상태: 정상';
             }
         });
 
@@ -719,7 +738,7 @@
             };
             socket.emit('add_sensor_request', data);
             
-            // clear inputs
+            /* clear inputs */
             document.getElementById('sen-name').value = '';
             document.getElementById('sen-multiplier').value = '';
             document.getElementById('sen-offset').value = '';
@@ -750,7 +769,7 @@
             extraParams['delay'] = parseInt(document.getElementById('act-delay').value || 0);
 
             if (type === 'virtual_counter' || type === 'virtual_latch') {
-                 extraParams['latch'] = (type === 'virtual_latch'); // 💡 false가 아니라 타입 검사로 true를 줍니다.
+                 extraParams['latch'] = (type === 'virtual_latch'); 
                  extraParams['delay'] = 0;
             }
 
@@ -807,7 +826,7 @@
                 }
             });
 
-            // sensor table
+            /* sensor table */
             let senTableHTML = "<tr><th>ID</th><th>이름</th><th>종류 / 단위</th><th>연결 (핀)</th><th>작동 규칙 및 AI 설정</th><th>관리</th></tr>";
             let linkOptionsHTML = '<option value="">연동 센서 선택...</option>';
             
@@ -867,7 +886,7 @@
             document.getElementById('sensorListTable').innerHTML = senTableHTML;
             document.getElementById('act-link').innerHTML = linkOptionsHTML;
 
-            // actuator table
+            /* actuator table */
             let actTableHTML = "<tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀/대상</th><th>조건 및 출력값</th><th>지연/래치</th><th>연동 센서</th><th>관리</th></tr>";
             
             actuators.forEach(act => {
