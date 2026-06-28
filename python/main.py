@@ -30,8 +30,8 @@ I2C_PROFILES = load_sensor_profiles()
 print(f"[DEBUG] [Main] Loaded I2C profiles: {list(I2C_PROFILES.keys())}")
 
 sensor_prev_states = {}
-virtual_device_mem = {}
-web.virtual_device_mem = virtual_device_mem
+actuator_mem = {}
+web.actuator_mem = actuator_mem
 
 # cycle count for debug
 cycle_count = 0
@@ -150,123 +150,134 @@ def loop():
             linked_acts_info = []
             for act in actuators:
                 if act['linked_sensor_id'] == sensor['id']:
-                    target_val = act.get('normal_val', 0)
-                    act_dir = act.get('trigger_dir', 'BOTH')
-                    is_active = False
                     act_type = act.get('control_type', '')
-
-                    if act_type.startswith('virtual_'):
-                        act_id = str(act['id'])
-                        extra = json.loads(act.get('extra_params', '{}')) # JSON 파싱
+                    act_id = str(act['id'])
+                    
+                    # parse extra params
+                    extra = json.loads(act.get('extra_params', '{}'))
+                    
+                    # init actuator memory
+                    if act_id not in actuator_mem:
+                        actuator_mem[act_id] = {'timer_start': 0, 'latched': False, 'count': 0, 'status_text': '', 'prev_active': False}
                         
-                        if act_id not in virtual_device_mem:
-                            virtual_device_mem[act_id] = {'count': 0, 'timer_start': 0, 'latched': False, 'status_text': ''}
-                        
-                        mem = virtual_device_mem[act_id]
-                        is_active = False
+                    mem = actuator_mem[act_id]
 
-                        # counter
-                        if act_type == 'virtual_counter':
-                            if just_triggered:
-                                mem['count'] += 1
-                            mem['status_text'] = f"누적 {mem['count']}회 감지"
-                            is_active = (mem['count'] > 0)
+                    # check delay and latch condition
+                    delay_sec = extra.get('delay', 0)
+                    use_latch = extra.get('latch', False)
+                    condition_met = False
+                    
+                    if is_anomaly:
+                        # check direction of anomaly
+                        act_dir = act.get('trigger_dir', 'BOTH')
+                        if (direction == "HIGH" and act_dir in ["HIGH", "BOTH"]) or \
+                           (direction == "LOW" and act_dir in ["LOW", "BOTH"]):
                             
-                        # timer
-                        elif act_type == 'virtual_timer':
-                            duration = extra.get('duration', 5)
-                            if is_anomaly:
+                            # check timer
+                            if delay_sec > 0:
                                 if mem['timer_start'] == 0:
                                     mem['timer_start'] = time.time()
-                                elapsed = int(time.time() - mem['timer_start'])
-                                if elapsed >= duration:
-                                    is_active = True
-                                    mem['status_text'] = f"🚨 {elapsed}초 지속됨! (경고)"
-                                else:
-                                    mem['status_text'] = f"⏳ {elapsed}초 경과... (대기)"
+                                if (time.time() - mem['timer_start']) >= delay_sec:
+                                    condition_met = True
                             else:
-                                mem['timer_start'] = 0
-                                mem['status_text'] = f"✔️ 정상 대기중 (기준:{duration}초)"
-                                
-                        # latch
-                        elif act_type == 'virtual_latch':
-                            if is_anomaly:
-                                mem['latched'] = True
-                            is_active = mem['latched']
-                            mem['status_text'] = "🚨 위험 상태 래치됨(고정)" if is_active else "✔️ 안전"
+                                condition_met = True
+                    else:
+                        # reset timer
+                        mem['timer_start'] = 0
+                        
+                    if condition_met and use_latch:
+                        mem['latched'] = True
+                        
+                    # final active state
+                    final_active = condition_met or mem['latched']
+                    
+                    # check edge trigger
+                    act_just_triggered = (final_active and not mem['prev_active'])
+                    mem['prev_active'] = final_active
+
+                    if act_type.startswith('virtual_'):
+                        # counter
+                        if act_type == 'virtual_counter':
+                            if act_just_triggered:
+                                mem['count'] += 1
+                            mem['status_text'] = f"누적 {mem['count']}회 감지"
                             
                         # webhook
                         elif act_type == 'virtual_webhook':
-                            if just_triggered:
+                            if act_just_triggered:
                                 url = extra.get('url', '')
                                 messenger = extra.get('messenger', 'discord')
-                                
                                 if url:
                                     try:
                                         msg = f"🚨 **[Raw2Insight 엣지 알림]**\n`{s_name}` 센서 이상 패턴 감지!"
                                         
                                         if messenger == 'discord':
-                                            payload = json.dumps({"content": msg}).encode('utf-8')
+                                            payload_json = json.dumps({"content": msg}).encode('utf-8')
                                         elif messenger == 'slack':
-                                            payload = json.dumps({"text": msg}).encode('utf-8')
+                                            payload_json = json.dumps({"text": msg}).encode('utf-8')
                                         else:
-                                            payload = json.dumps({"message": msg}).encode('utf-8')
+                                            payload_json = json.dumps({"message": msg}).encode('utf-8')
                                             
                                         req = urllib.request.Request(
-                                            url, 
-                                            data=payload, 
-                                            headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+                                            url, data=payload_json, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
                                         )
                                         urllib.request.urlopen(req, timeout=2.0)
                                         mem['status_text'] = f"✅ {messenger.upper()} 전송 완료"
                                     except Exception as e:
-                                        mem['status_text'] = f"❌ 전송 실패 ({messenger})"
+                                        mem['status_text'] = f"❌ 전송 실패"
                                         print(f"[ERROR] Webhook failed: {e}")
-                            
-                            is_active = just_triggered
-                            if not is_active and '전송 완료' not in mem['status_text']:
+                                        
+                            if not final_active and '전송 완료' not in mem['status_text']:
                                 mem['status_text'] = "✔️ 대기중"
+
+                        # timer or latch status
+                        elif act_type == 'virtual_timer' or act_type == 'virtual_latch':
+                            if final_active:
+                                mem['status_text'] = "🚨 위험 상태 감지됨!"
+                            else:
+                                elapsed = int(time.time() - mem['timer_start']) if mem['timer_start'] > 0 else 0
+                                mem['status_text'] = f"⏳ {elapsed}초 경과... (대기)" if mem['timer_start'] > 0 else "✔️ 정상 대기중"
+
+                        disp_text = mem['status_text'] if not mem['latched'] else f"🧲 래치됨! ({mem['status_text']})"
 
                         # virtual device payload
                         linked_acts_info.append({
                             'id': act['id'],
                             'name': act['name'],
-                            'active': is_active,
+                            'active': final_active,
                             'control_type': act_type,
-                            'val': mem['status_text'],
+                            'val': disp_text,
                             'is_virtual': True
                         })
                         continue
 
-                    if is_anomaly:
-                        # check direction of anomaly
-                        if (direction == "HIGH" and act_dir in ["HIGH", "BOTH"]) or \
-                           (direction == "LOW" and act_dir in ["LOW", "BOTH"]):
-                            
-                            is_active = True
-                            base_target = act['high_val'] if direction == "HIGH" else act['low_val']
-
-                            # calc output value
-                            if act['control_type'] == 'pwm':
-                                max_severity = 0.5
-                                intensity = manual_intensity if is_manual_anomaly else min(1.0, abs(score) / 0.5)
-
-                                # normal to base_target
-                                val_diff = base_target - act['normal_val']
-                                target_val = act['normal_val'] + int(val_diff * intensity)
-
-                                print(f"[DEBUG] PWM Proportional: Intensity({intensity*100:.1f}%) -> Output({target_val})")
-                            else:
-                                # case of digital device
-                                target_val = base_target                    
+                    target_val = act.get('normal_val', 0)
+                    
+                    if final_active:
+                        base_target = act['high_val'] if direction == "HIGH" else act['low_val']
                         
+                        # calc output value
+                        if act_type == 'pwm' and is_anomaly:
+                            max_severity = 0.5
+                            intensity = manual_intensity if is_manual_anomaly else min(1.0, abs(score) / max_severity)
+                            
+                            # normal to base_target
+                            val_diff = base_target - act['normal_val']
+                            target_val = act['normal_val'] + int(val_diff * intensity)
+                        else:
+                            # case of digital device
+                            target_val = base_target
+                            
                     # target_val send to MCU
                     comm.set_actuator_dynamic(act['control_type'], act['pin'], target_val)
                     
                     linked_acts_info.append({
+                        'id': act['id'],
                         'name': act['name'],
-                        'active': is_active,
-                        'pwm_val': target_val # for debug
+                        'active': final_active,
+                        'control_type': act_type,
+                        'pwm_val': target_val,
+                        'latched': mem['latched']
                     })
             
             # carrying in payload

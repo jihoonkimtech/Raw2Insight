@@ -18,6 +18,7 @@ class WebServer:
         print("[DEBUG] [WebServer] Initializing WebUI module...")
         self.ui = WebUI()
         self.db = db_manager
+        self.actuator_mem = None
 
         # register event handlers for incoming messages from frontend
         self.ui.on_message('client_ready', self.on_client_ready)
@@ -131,9 +132,9 @@ class WebServer:
         
     def on_reset_virtual(self, sid, data):
         act_id = str(data.get('id'))
-        if hasattr(self, 'virtual_device_mem') and act_id in self.virtual_device_mem:
-            # force reset
-            self.virtual_device_mem[act_id]['latched'] = False
-            self.virtual_device_mem[act_id]['count'] = 0
-            self.virtual_device_mem[act_id]['status_text'] = "✔️ 안전 (수동 초기화됨)"
-            print(f"[DEBUG] [WebServer] 가상 장치(ID: {act_id}) 수동 초기화 완료.")
+        if self.actuator_mem is not None and act_id in self.actuator_mem:
+            self.actuator_mem[act_id]['latched'] = False
+            self.actuator_mem[act_id]['count'] = 0
+            self.actuator_mem[act_id]['status_text'] = "✔️ 안전 (수동 초기화됨)"
+            self.actuator_mem[act_id]['prev_active'] = False
+            print(f"[DEBUG] 장치(ID: {act_id}) 수동 초기화 완료.")

@@ -51,9 +51,20 @@
         .delete-btn { background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
         .delete-btn:hover { background-color: #c82333; }
 
-        .act-container { margin-top: 10px; display: flex; gap: 10px; }
-        .act-box { padding: 5px 12px; border-radius: 20px; font-size: 0.85em; font-weight: bold; transition: 0.3s; border: 1px solid #ccc; }
-        .act-on { background-color: #ffc107; color: #000; border-color: #ffc107; box-shadow: 0 0 10px rgba(255, 193, 7, 0.7); } /* 불 들어온 효과 */
+        /* badges */
+        .act-container { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .act-box { 
+            padding: 5px 12px; 
+            border-radius: 20px; 
+            font-size: 0.85em; 
+            font-weight: bold; 
+            transition: 0.3s; 
+            border: 1px solid #ccc; 
+            display: inline-flex; 
+            align-items: center; 
+            white-space: nowrap;
+        }
+        .act-on { background-color: #ffc107; color: #000; border-color: #ffc107; box-shadow: 0 0 10px rgba(255, 193, 7, 0.7); } 
         .act-off { background-color: #e9ecef; color: #6c757d; }
 
         /* tab board */
@@ -258,6 +269,15 @@
                                 </div>
                             </div>
                             
+                            <div id="universal-options" style="background:#eef; padding:10px; border-radius:5px; margin-bottom:10px; border: 1px solid #ccd;">
+                                <label style="font-size:0.9em; color:#333; cursor:pointer;">
+                                    <input type="checkbox" id="act-use-latch" style="vertical-align:middle;"> 🧲 한 번 켜지면 계속 유지 (래치)
+                                </label>
+                                <div style="margin-top:8px; font-size:0.9em; color:#555;">
+                                    ⏱️ 이상 발생 후 <input type="number" id="act-delay" placeholder="0" style="width:50px; padding:2px;"> 초 뒤에 작동 시작 (0이면 즉시)
+                                </div>
+                            </div>
+
                             <div class="form-group">
                                 <select id="act-link">
                                     <option value="">연동 센서 선택...</option>
@@ -278,7 +298,7 @@
 
                     <h4 style="margin-top: 20px;">출력 장치 (Actuators)</h4>
                     <table id="actuatorListTable">
-                        <tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀</th><th>동작값</th><th>연동 센서 ID</th><th>관리</th></tr>
+                        <tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀/대상</th><th>조건 및 출력값</th><th>지연/래치</th><th>연동 센서</th><th>관리</th></tr>
                     </table>
                 </div>
 
@@ -293,15 +313,14 @@
             socket.emit('client_ready', { status: "connected" });
         });
 
-        // global chart object storage
         const charts = {};
 
         const colorPalette = [
-            { border: '#007bff', bg: 'rgba(0, 123, 255, 0.2)' },  // 파랑
-            { border: '#28a745', bg: 'rgba(40, 167, 69, 0.2)' },  // 초록
-            { border: '#fd7e14', bg: 'rgba(253, 126, 20, 0.2)' }, // 주황
-            { border: '#6f42c1', bg: 'rgba(111, 66, 193, 0.2)' }, // 보라
-            { border: '#17a2b8', bg: 'rgba(23, 162, 184, 0.2)' }  // 청록
+            { border: '#007bff', bg: 'rgba(0, 123, 255, 0.2)' },  
+            { border: '#28a745', bg: 'rgba(40, 167, 69, 0.2)' },  
+            { border: '#fd7e14', bg: 'rgba(253, 126, 20, 0.2)' }, 
+            { border: '#6f42c1', bg: 'rgba(111, 66, 193, 0.2)' }, 
+            { border: '#17a2b8', bg: 'rgba(23, 162, 184, 0.2)' }  
         ];
 
         function timeToSec(t) {
@@ -319,11 +338,7 @@
             let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0, count = 0;
             values.forEach((y, x) => {
                 if (y !== null && y !== undefined) {
-                    sumX += x;
-                    sumY += y;
-                    sumXY += x * y;
-                    sumXX += x * x;
-                    count++;
+                    sumX += x; sumY += y; sumXY += x * y; sumXX += x * x; count++;
                 }
             });
             if (count <= 1) return [...values];
@@ -334,11 +349,8 @@
             return values.map((_, x) => slope * x + intercept);
         }
 
-        // receive multi sensor data
         socket.on('update_dashboard_multi', function(payload) {
             const container = document.getElementById('dynamic-charts-container');
-        
-            // anomaly check
             let anyAnomaly = false;
 
             if (payload['__sys_health__']) {
@@ -359,7 +371,6 @@
                 else ramEl.className = 'health-val health-danger';
             }
         
-            // travel sensors
             Object.keys(payload).forEach(sensorName => {
                 if (sensorName === '__sys_health__') return;
               
@@ -376,7 +387,6 @@
         
                 if (isAnomaly) anyAnomaly = true;
         
-                // create dynamic DOM
                 if (!document.getElementById(`panel-${sensorName}`)) {
                     const panelHTML = `
                         <div id="panel-${sensorName}" style="border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-top: 20px; background: #fff;">
@@ -396,7 +406,6 @@
         
                     const color = colorPalette[Object.keys(charts).length % colorPalette.length];
         
-                    // init Chart.js
                     const ctx = document.getElementById(`chart-${sensorName}`).getContext('2d');
                     charts[sensorName] = new Chart(ctx, {
                         type: 'line',
@@ -419,84 +428,51 @@
                                     label: '추세선 (Trend)',
                                     data: [],
                                     borderColor: 'rgba(50, 50, 50, 0.6)',
-                                    borderWidth: 2,
-                                    borderDash: [5, 5],
-                                    fill: false,
-                                    pointRadius: 0,
-                                    tension: 0,
-                                    spanGaps: true,
-                                    hidden: isDigital
+                                    borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0, spanGaps: true, hidden: isDigital
                                 },
                                 {
                                     label: '안정값 (Smoothed)',
                                     data: [],
-                                    borderColor: color.border,
-                                    backgroundColor: color.bg,
-                                    borderWidth: 3,
-                                    fill: false,
-                                    tension: 0.18,
-                                    pointRadius: 2,
-                                    pointHoverRadius: 4,
-                                    spanGaps: true,
-                                    hidden: isDigital
+                                    borderColor: color.border, backgroundColor: color.bg, borderWidth: 3, fill: false, tension: 0.18, pointRadius: 2, pointHoverRadius: 4, spanGaps: true, hidden: isDigital
                                 },
                                 {
                                     label: '상한 (High)',
-                                    data: [],
-                                    borderColor: 'rgba(220, 53, 69, 0.3)',
-                                    borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0, hidden: isDigital
+                                    data: [], borderColor: 'rgba(220, 53, 69, 0.3)', borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0, hidden: isDigital
                                 },
                                 {
                                     label: '하한 (Low)',
-                                    data: [],
-                                    borderColor: 'rgba(0, 123, 255, 0.3)',
-                                    borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0, hidden: isDigital
+                                    data: [], borderColor: 'rgba(0, 123, 255, 0.3)', borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0, hidden: isDigital
                                 }
                             ]
                         },
                         options: {
-                            responsive: true, maintainAspectRatio: false,
-                            interaction: { mode: 'index', intersect: false },
+                            responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
                             plugins: {
                                 legend: { 
                                     labels: { boxWidth: 28, usePointStyle: false, padding: 14 },
-                                    filter: function(item, chart) {
-                                        if (isDigital) return item.datasetIndex === 0;
-                                        return true;
-                                    }
+                                    filter: function(item, chart) { return isDigital ? item.datasetIndex === 0 : true; }
                                 },
                                 tooltip: { callbacks: { title: function(context) { return `시각: ${context[0].label}`; } } }
                             },
                             scales: {
-                                x: {
-                                    ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
-                                    grid: { display: true, color: 'rgba(0,0,0,0.06)' }
-                                },
+                                x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { display: true, color: 'rgba(0,0,0,0.06)' } },
                                 y: {
-                                    min: isDigital ? -0.2 : undefined,
-                                    max: isDigital ? 1.2 : undefined,
+                                    min: isDigital ? -0.2 : undefined, max: isDigital ? 1.2 : undefined,
                                     ticks: { 
                                         precision: 0,
-                                        callback: function(value) {
-                                            if (isDigital) return (value === 0 || value === 1) ? value : '';
-                                            return value;
-                                        }
+                                        callback: function(value) { return (isDigital && (value === 0 || value === 1)) ? value : isDigital ? '' : value; }
                                     },
                                     grid: { color: 'rgba(0,0,0,0.08)' }
                                 }
                             }
                         }
                     });
-        
-                    // store origin color
                     charts[sensorName].baseColor = color;
                 }
         
-                // update status badge
                 const badge = document.getElementById(`status-${sensorName}`);
                 const chartObj = charts[sensorName];
                 const valDisplay = document.getElementById(`val-${sensorName}`);
-        
                 const targetDatasetIndex = isDigital ? 0 : 2;
 
                 if (isAnomaly) {
@@ -514,7 +490,6 @@
                     valDisplay.style.color = chartObj.baseColor.border;
                 }
         
-                // render chart data
                 const aggrRows = sortRowsByTime(rows);
                 const rawRowsList = sortRowsByTime(rawRows);
                 
@@ -522,10 +497,7 @@
                 const aggrStartTime = aggrRows.length > 0 ? timeToSec(aggrRows[0][0]) : 0;
                 const syncStartTime = isDigital ? rawStartTime : Math.max(rawStartTime, aggrStartTime); 
 
-                const allTimes = new Set([
-                    ...rawRowsList.map(r => r[0]),
-                    ...(isDigital ? [] : aggrRows.map(r => r[0]))
-                ]);
+                const allTimes = new Set([...rawRowsList.map(r => r[0]), ...(isDigital ? [] : aggrRows.map(r => r[0]))]);
                 const xLabels = Array.from(allTimes)
                     .sort((a, b) => timeToSec(a) - timeToSec(b))
                     .filter(t => timeToSec(t) >= syncStartTime);
@@ -538,12 +510,8 @@
 
                 chartObj.data.labels = xLabels;
                 chartObj.data.datasets[0].data = alignedRawData;
-
-                const highLineData = data.threshold_high !== null ? xLabels.map(() => data.threshold_high) : [];
-                const lowLineData = data.threshold_low !== null ? xLabels.map(() => data.threshold_low) : [];
-
-                chartObj.data.datasets[3].data = highLineData;
-                chartObj.data.datasets[4].data = lowLineData;
+                chartObj.data.datasets[3].data = data.threshold_high !== null ? xLabels.map(() => data.threshold_high) : [];
+                chartObj.data.datasets[4].data = data.threshold_low !== null ? xLabels.map(() => data.threshold_low) : [];
                 
                 if (isDigital) {
                     chartObj.data.datasets[1].data = [];
@@ -554,15 +522,9 @@
                     chartObj.data.datasets[1].data = rawValidCount >= 3 ? buildTrendLine(alignedRawData) : [];
                 }
         
-                if (rawRowsList.length > 0) {
-                    const latestVal = rawRowsList[rawRowsList.length - 1][1];
-                    valDisplay.innerText = `${latestVal} ${sUnit}`;
-                } else if (aggrRows.length > 0) {
-                    const latestVal = aggrRows[aggrRows.length - 1][1];
-                    valDisplay.innerText = `${latestVal} ${sUnit}`;
-                } else {
-                    valDisplay.innerText = `-- ${sUnit}`;
-                }
+                if (rawRowsList.length > 0) valDisplay.innerText = `${rawRowsList[rawRowsList.length - 1][1]} ${sUnit}`;
+                else if (aggrRows.length > 0) valDisplay.innerText = `${aggrRows[aggrRows.length - 1][1]} ${sUnit}`;
+                else valDisplay.innerText = `-- ${sUnit}`;
         
                 const actContainer = document.getElementById(`act-container-${sensorName}`);
                 if (actContainer) {
@@ -571,19 +533,22 @@
         
                     if (linkedActs.length > 0) {
                         linkedActs.forEach(act => {
+                            const isLatched = act.latched || (act.val && act.val.includes('래치됨'));
+                            const isCounterTriggered = (act.control_type === 'virtual_counter' && act.val && !act.val.includes('0회'));
+                            const showResetBtn = isLatched || isCounterTriggered;
+                            const resetBtn = showResetBtn ? `<button class="btn-reset" onclick="socket.emit('reset_virtual', {id: ${act.id}})">초기화</button>` : "";
+
                             if (act.is_virtual) {
                                 const vClass = act.active ? 'act-virtual-on' : 'act-virtual-off';
-                                let resetBtn = "";
-                                const type = act.control_type.toLowerCase();
-                                if ((type.includes("latch") || type.includes("counter")) && act.active) {
-                                    resetBtn = `<button class="btn-reset" onclick="socket.emit('reset_virtual', {id: ${act.id}})">초기화</button>`;
-                                }
                                 actHTML += `<div class="act-box ${vClass}">💡 ${act.name}: ${act.val}${resetBtn}</div>`;
                             } else {
                                 const actClass = act.active ? 'act-on' : 'act-off';
                                 const outVal = act.pwm_val !== undefined ? act.pwm_val : (act.active ? 'ON' : 'OFF');
-                                const actText = act.active ? `⚡ 작동중 (출력: ${outVal})` : `💤 대기중`;
-                                actHTML += `<div class="act-box ${actClass}">⚙️ ${act.name}: ${actText}</div>`;
+                                
+                                let actText = act.active ? `⚡ 작동중 (출력: ${outVal})` : `💤 대기중`;
+                                if (isLatched) actText = `🧲 래치됨 (출력: ${outVal})`;
+
+                                actHTML += `<div class="act-box ${actClass}">⚙️ ${act.name}: ${actText}${resetBtn}</div>`;
                             }
                         });
                     } else {
@@ -595,7 +560,6 @@
                 chartObj.update('none');
             });
         
-            // global badge
             const mainBadge = document.getElementById('aiStatus');
             if (anyAnomaly) {
                 document.body.classList.add('alert-bg');
@@ -608,7 +572,6 @@
             }
         });
 
-        // Device Management
         const actPinMap = {
             'digital_out': ['7', '8', '12', '13'],
             'pwm': ['3', '5', '6', '9', '10', '11'] 
@@ -623,8 +586,15 @@
             const pinSelect = document.getElementById('act-pin');
             const physConfig = document.getElementById('physical-configs');
             const vParams = document.getElementById('virtual-params-container');
+            const uOptions = document.getElementById('universal-options');
 
             pinSelect.innerHTML = '';
+
+            if (type === 'virtual_counter' || type === 'virtual_latch') {
+                uOptions.style.display = 'none';
+            } else {
+                uOptions.style.display = 'block';
+            }
 
             if (type.startsWith('virtual_')) {
                 physConfig.style.display = 'none';
@@ -635,7 +605,6 @@
                 option.text = '가상 핀 (내부 메모리 연산)';
                 pinSelect.appendChild(option);
 
-                // for virtual device
                 if (type === 'virtual_timer') {
                     vParams.innerHTML = '<input type="number" class="dynamic-input" id="v-duration" placeholder="지속 시간 (예: 5 입력 시 5초 연속 이상일 때 트리거)">';
                 } else if (type === 'virtual_webhook') {
@@ -660,8 +629,6 @@
                     pinSelect.appendChild(option);
                 });
             }
-
-
         }
 
         function updateSensorPinOptions() {
@@ -725,10 +692,7 @@
                 alert("센서 이름을 입력하세요."); return;
             }
 
-            let tLow = null;
-            let tHigh = null;
-            let pName = null;
-            let dKey = null;
+            let tLow = null; let tHigh = null; let pName = null; let dKey = null;
           
             if (protocol === 'i2c') {
                 pName = document.getElementById('sen-i2c-profile').value;
@@ -746,20 +710,16 @@
             }
 
             const data = {
-                name: document.getElementById('sen-name').value,
-                protocol: protocol,
-                pin: pin,
-                data_type: document.getElementById('sen-datatype').value,
-                unit: document.getElementById('sen-unit').value,
-                threshold_low: tLow,
-                threshold_high: tHigh,
+                name: document.getElementById('sen-name').value, protocol: protocol, pin: pin,
+                data_type: document.getElementById('sen-datatype').value, unit: document.getElementById('sen-unit').value,
+                threshold_low: tLow, threshold_high: tHigh,
                 multiplier: document.getElementById('sen-multiplier').value ? parseFloat(document.getElementById('sen-multiplier').value) : 1.0,
                 offset: document.getElementById('sen-offset').value ? parseFloat(document.getElementById('sen-offset').value) : 0.0,
-                profile_name: pName,
-                data_key: dKey
+                profile_name: pName, data_key: dKey
             };
             socket.emit('add_sensor_request', data);
             
+            // clear inputs
             document.getElementById('sen-name').value = '';
             document.getElementById('sen-multiplier').value = '';
             document.getElementById('sen-offset').value = '';
@@ -767,13 +727,12 @@
             document.getElementById('sen-unit').value = '';
             document.getElementById('sen-thresh-low').value = '';
             document.getElementById('sen-thresh-high').value = '';
-            document.getElementById('sen-digital-trigger').value = 'I2C 센서 드라이버 선택...';
+            document.getElementById('sen-digital-trigger').value = '1';
             if(protocol === 'i2c'){
               document.getElementById('sen-pin-input').value = '';
-              document.getElementById('sen-i2c-datakey').value = '추출할 데이터 선택...';
+              document.getElementById('sen-i2c-datakey').value = '';
               document.getElementById('sen-i2c-profile').value = '';
             }
-              
         }
 
         function submitActuator() {
@@ -787,12 +746,21 @@
             let extraParams = {};
             let normal=0, low=0, high=0, dir='BOTH';
 
+            extraParams['latch'] = document.getElementById('act-use-latch').checked;
+            extraParams['delay'] = parseInt(document.getElementById('act-delay').value || 0);
+
+            if (type === 'virtual_counter' || type === 'virtual_latch') {
+                 extraParams['latch'] = (type === 'virtual_latch'); // 💡 false가 아니라 타입 검사로 true를 줍니다.
+                 extraParams['delay'] = 0;
+            }
+
             if (type.startsWith('virtual_')) {
-                // vertual device
                 if (type === 'virtual_timer') extraParams['duration'] = parseInt(document.getElementById('v-duration').value || 5);
-                if (type === 'virtual_webhook') extraParams['url'] = document.getElementById('v-url').value;
+                if (type === 'virtual_webhook') {
+                    extraParams['messenger'] = document.getElementById('v-messenger').value;
+                    extraParams['url'] = document.getElementById('v-url').value;
+                }
             } else {
-                // actual device
                 normal = document.getElementById('act-normal').value;
                 low = document.getElementById('act-low').value;
                 high = document.getElementById('act-high').value;
@@ -805,18 +773,9 @@
                 linked_sensor_id: linkId,
                 extra_params: JSON.stringify(extraParams)
             };
-
-            if (type.startsWith('virtual_')) {
-                if (type === 'virtual_timer') extraParams['duration'] = parseInt(document.getElementById('v-duration').value || 5);
-                if (type === 'virtual_webhook') {
-                    extraParams['messenger'] = document.getElementById('v-messenger').value;
-                    extraParams['url'] = document.getElementById('v-url').value;
-                }
-            }
             socket.emit('add_actuator_request', data);
         }
 
-        // delete registered sensor from DB
         function deleteDevice(type, id) {
             if(confirm(`정말 이 ${type === 'sensor' ? '센서' : '액추에이터'}를 삭제하시겠습니까?`)) {
                 socket.emit('delete_device_request', { type: type, id: id });
@@ -844,7 +803,7 @@
                     charts[sensorName].destroy();
                     delete charts[sensorName];
                     const panel = document.getElementById(`panel-${sensorName}`);
-                    if (panel) panel.remove(); // delete DOM
+                    if (panel) panel.remove();
                 }
             });
 
@@ -857,11 +816,9 @@
                 const sensVal = sen.sensitivity || 0.1;
                 const sensPercent = Math.round(sensVal * 100);
                 
-                // protocol and pin
                 const protocolBadge = sen.protocol.toUpperCase();
                 const pinDisplay = `${protocolBadge} (${sen.pin})`;
 
-                // threshold setting
                 let threshHTML = '';
                 if (isDigital) {
                     const trigger = (sen.threshold_high !== null && sen.threshold_high !== undefined) ? sen.threshold_high : 1;
@@ -874,14 +831,12 @@
                     threshHTML = `<span style="color:#555; font-size:0.9em;">수동범위: <b>${tLow} ~ ${tHigh}</b></span>`;
                 }
 
-                // analog calibration
                 const mult = sen.multiplier !== undefined ? sen.multiplier : 1.0;
                 const off = sen.offset !== undefined ? sen.offset : 0.0;
                 const calibHTML = (!isDigital && (mult !== 1.0 || off !== 0.0))
                     ? `<span style="background:#f1f3f5; color:#666; padding:2px 6px; border-radius:4px; font-size:0.85em; margin-left:5px;">보정: y = ${mult}x + ${off}</span>`
                     : '';
 
-                // AI sensitivity
                 const sliderHTML = isDigital 
                     ? `<span style="color:#999; font-size:0.85em; margin-left:5px;">[Rule-Base]</span>` 
                     : `<span style="margin-left:8px; font-size:0.85em; color:#28a745;">AI 민감도: 
@@ -890,7 +845,6 @@
                         <b id="sens-val-${sen.id}">${sensPercent}%</b>
                        </span>`;
 
-                // another info
                 const rulesAndAIColumn = `
                     <div style="display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; text-align:left;">
                         ${threshHTML}
@@ -914,15 +868,43 @@
             document.getElementById('act-link').innerHTML = linkOptionsHTML;
 
             // actuator table
-            let actTableHTML = "<tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀</th><th>조건(방향)</th><th>평상/낮음/높음</th><th>연동 센서</th><th>관리</th></tr>";
+            let actTableHTML = "<tr><th>ID</th><th>이름</th><th>제어 방식</th><th>핀/대상</th><th>조건 및 출력값</th><th>지연/래치</th><th>연동 센서</th><th>관리</th></tr>";
+            
             actuators.forEach(act => {
                 const linkedSen = sensors.find(s => s.id === act.linked_sensor_id);
                 const linkedName = linkedSen ? linkedSen.name : `ID:${act.linked_sensor_id} (삭제됨)`;
-                const vals = `${act.normal_val} / ${act.low_val} / ${act.high_val}`;
+                
+                let extra = {};
+                try { extra = JSON.parse(act.extra_params || '{}'); } catch(e){}
+
+                let pinTarget = act.pin;
+                let conditionOut = '';
+                let delayLatch = '';
+
+                if (act.control_type.startsWith('virtual_')) {
+                    pinTarget = '<span style="color:#6f42c1;">가상 (Virtual)</span>';
+                    if (act.control_type === 'virtual_timer') conditionOut = `지속 조건: <b>${extra.duration || 5}초</b>`;
+                    else if (act.control_type === 'virtual_webhook') {
+                        pinTarget = `<span style="color:#17a2b8;">${(extra.messenger || 'Webhook').toUpperCase()}</span>`;
+                        conditionOut = `URL: ${(extra.url || '').substring(0, 15)}...`;
+                    } else {
+                        conditionOut = '-';
+                    }
+                } else {
+                    conditionOut = `[${act.trigger_dir}] 평상:${act.normal_val} → 이상:${act.low_val}~${act.high_val}`;
+                }
+
+                let dlArr = [];
+                if (extra.delay) dlArr.push(`⏱️${extra.delay}초 지연`);
+                if (extra.latch) dlArr.push(`🧲 래치 유지`);
+                delayLatch = dlArr.length > 0 ? dlArr.join(', ') : '-';
                 
                 actTableHTML += `<tr>
-                    <td>${act.id}</td><td>${act.name}</td><td>${act.control_type}</td>
-                    <td>${act.pin}</td><td>${act.trigger_dir}</td><td>${vals}</td><td>${linkedName}</td>
+                    <td>${act.id}</td><td style="font-weight:bold;">${act.name}</td><td>${act.control_type}</td>
+                    <td style="font-family:monospace;">${pinTarget}</td>
+                    <td style="font-size:0.9em; color:#444;">${conditionOut}</td>
+                    <td style="font-size:0.9em; color:#d63031; font-weight:bold;">${delayLatch}</td>
+                    <td>${linkedName}</td>
                     <td><button class="delete-btn" onclick="deleteDevice('actuator', ${act.id})">❌ 삭제</button></td>
                 </tr>`;
             });
@@ -931,7 +913,6 @@
 
         function changeSensitivity(id, val) {
             document.getElementById(`sens-val-${id}`).innerText = Math.round(val * 100) + '%';
-            // send to backend
             socket.emit('change_sensitivity', { id: id, sensitivity: parseFloat(val) });
         }
 
@@ -964,13 +945,11 @@
 
         let availableI2CProfiles = {};
 
-        // req i2c profiles
         socket.on('connect', () => {
             socket.emit('client_ready', { status: "connected" });
-            socket.emit('request_i2c_profiles', {}); // 🚀 요청 전송
+            socket.emit('request_i2c_profiles', {}); 
         });
 
-        // drop-down i2c profiles
         socket.on('update_i2c_profiles', function(data) {
             availableI2CProfiles = data;
             const profileSelect = document.getElementById('sen-i2c-profile');
@@ -990,11 +969,7 @@
             
             if (selectedProfile && availableI2CProfiles[selectedProfile]) {
                 const profileInfo = availableI2CProfiles[selectedProfile];
-                
-                // auto fill default addr
                 pinInput.value = profileInfo.default_addr;
-                
-                // drop-down extract values
                 profileInfo.outputs.forEach(outputKey => {
                     keySelect.innerHTML += `<option value="${outputKey}">${outputKey}</option>`;
                 });
