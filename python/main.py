@@ -10,6 +10,7 @@ import time
 import psutil
 import json
 import urllib.request
+import threading # added for non-blocking webhook operations
 from arduino.app_utils import App
 
 # load custom modules
@@ -30,11 +31,29 @@ I2C_PROFILES = load_sensor_profiles()
 print(f"[DEBUG] [Main] Loaded I2C profiles: {list(I2C_PROFILES.keys())}")
 
 sensor_prev_states = {}
+sensor_prev_manual = {} # added for hysteresis tracking
 actuator_mem = {}
 web.actuator_mem = actuator_mem
 
 # cycle count for debug
 cycle_count = 0
+
+# background thread helper for webhook
+def fire_webhook_async(url, payload_json, mem, messenger):
+    def task():
+        try:
+            req = urllib.request.Request(
+                url, data=payload_json, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+            )
+            urllib.request.urlopen(req, timeout=2.0)
+            mem['status_text'] = f"✅ {messenger.upper()} 전송 완료"
+        except Exception as e:
+            mem['status_text'] = f"❌ 전송 실패"
+            print(f"[ERROR] [Webhook] failed: {e}")
+            
+    t = threading.Thread(target=task)
+    t.daemon = True
+    t.start()
 
 def loop():
     global cycle_count
@@ -95,7 +114,7 @@ def loop():
                         calibrated_value = parsed_dict[s_data_key]
                     else:
                         print(f"[ERROR] [Main] Can't find {s_data_key} KEY!")
-                           
+
                 else:
                     # for debug
                     print(f"[DEBUG] [Main] Call debug i2c functionY!")
@@ -105,7 +124,7 @@ def loop():
             # store in DB
             db.insert_data(calibrated_value, s_name)
 
-            # load data
+            # load data (fetch more for AI context, UI gets sliced later)
             formatted_rows, values_only = db.get_aggregated_data(s_name, limit=300)
             raw_rows = db.get_raw_data(s_name, limit=60)
 
@@ -126,17 +145,40 @@ def loop():
                 # analog, i2c : do Isolation Forest
                 is_anomaly, direction, score = ai.detect(s_name, values_only, s_protocol, s_sens)
 
-                if s_thresh_high is not None and calibrated_value > s_thresh_high:
-                    is_anomaly, is_manual_anomaly, direction = True, True, "HIGH"
-                    gap = calibrated_value - s_thresh_high
-                    max_gap = s_thresh_high * 0.2 if s_thresh_high != 0 else 10.0
-                    manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
-                    
-                elif s_thresh_low is not None and calibrated_value < s_thresh_low:
-                    is_anomaly, is_manual_anomaly, direction = True, True, "LOW"
-                    gap = s_thresh_low - calibrated_value
-                    max_gap = s_thresh_low * 0.2 if s_thresh_low != 0 else 10.0
-                    manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
+                # rule-base decision with hysteresis logic applied
+                margin = 1.5 
+                
+                if s_name not in sensor_prev_manual:
+                    sensor_prev_manual[s_name] = {"HIGH": False, "LOW": False}
+
+                if s_thresh_high is not None:
+                    if calibrated_value > s_thresh_high:
+                        sensor_prev_manual[s_name]["HIGH"] = True
+                        is_anomaly, is_manual_anomaly, direction = True, True, "HIGH"
+                    elif sensor_prev_manual[s_name]["HIGH"] and calibrated_value > (s_thresh_high - margin):
+                        is_anomaly, is_manual_anomaly, direction = True, True, "HIGH"
+                    else:
+                        sensor_prev_manual[s_name]["HIGH"] = False
+
+                if not is_manual_anomaly and s_thresh_low is not None:
+                    if calibrated_value < s_thresh_low:
+                        sensor_prev_manual[s_name]["LOW"] = True
+                        is_anomaly, is_manual_anomaly, direction = True, True, "LOW"
+                    elif sensor_prev_manual[s_name]["LOW"] and calibrated_value < (s_thresh_low + margin):
+                        is_anomaly, is_manual_anomaly, direction = True, True, "LOW"
+                    else:
+                        sensor_prev_manual[s_name]["LOW"] = False
+
+                # recalculate manual intensity based on active direction
+                if is_manual_anomaly:
+                    if direction == "HIGH":
+                        gap = calibrated_value - s_thresh_high
+                        max_gap = s_thresh_high * 0.2 if s_thresh_high != 0 else 10.0
+                        manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
+                    elif direction == "LOW":
+                        gap = s_thresh_low - calibrated_value
+                        max_gap = s_thresh_low * 0.2 if s_thresh_low != 0 else 10.0
+                        manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
 
             just_triggered = False
             if s_name not in sensor_prev_states:
@@ -208,24 +250,18 @@ def loop():
                                 url = extra.get('url', '')
                                 messenger = extra.get('messenger', 'discord')
                                 if url:
-                                    try:
-                                        msg = f"🚨 **[Raw2Insight 엣지 알림]**\n`{s_name}` 센서 이상 패턴 감지!"
+                                    msg = f"🚨 **[Raw2Insight 엣지 알림]**\n`{s_name}` 센서 이상 패턴 감지!"
+                                    
+                                    if messenger == 'discord':
+                                        payload_json = json.dumps({"content": msg}).encode('utf-8')
+                                    elif messenger == 'slack':
+                                        payload_json = json.dumps({"text": msg}).encode('utf-8')
+                                    else:
+                                        payload_json = json.dumps({"message": msg}).encode('utf-8')
                                         
-                                        if messenger == 'discord':
-                                            payload_json = json.dumps({"content": msg}).encode('utf-8')
-                                        elif messenger == 'slack':
-                                            payload_json = json.dumps({"text": msg}).encode('utf-8')
-                                        else:
-                                            payload_json = json.dumps({"message": msg}).encode('utf-8')
-                                            
-                                        req = urllib.request.Request(
-                                            url, data=payload_json, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
-                                        )
-                                        urllib.request.urlopen(req, timeout=2.0)
-                                        mem['status_text'] = f"✅ {messenger.upper()} 전송 완료"
-                                    except Exception as e:
-                                        mem['status_text'] = f"❌ 전송 실패"
-                                        print(f"[ERROR] Webhook failed: {e}")
+                                    # send via background thread
+                                    mem['status_text'] = f"⏳ {messenger.upper()} 전송 중..."
+                                    fire_webhook_async(url, payload_json, mem, messenger)
                                         
                             if not final_active and '전송 완료' not in mem['status_text']:
                                 mem['status_text'] = "✔️ 대기중"
@@ -264,6 +300,9 @@ def loop():
                             # normal to base_target
                             val_diff = base_target - act['normal_val']
                             target_val = act['normal_val'] + int(val_diff * intensity)
+                            
+                            # clamping to protect hardware limits
+                            target_val = max(0, min(255, target_val))
                         else:
                             # case of digital device
                             target_val = base_target
@@ -282,14 +321,14 @@ def loop():
             
             # carrying in payload
             payload[s_name] = {
-                'rows': formatted_rows[:60],  # send only recent 60 points to ui
-                'raw_rows': raw_rows,         # already limited to 60 above
+                'rows': formatted_rows[:60],  # sliced to 60 for frontend performance
+                'raw_rows': raw_rows,         
                 'alert': is_anomaly,
                 'data_type': s_type,
                 'unit': s_unit,
                 'protocol': s_protocol,
                 'actuators': linked_acts_info,
-                'score': float(score),        # ensure float serialization
+                'score': float(score),        # serialized as float for JSON
                 'threshold_low': s_thresh_low,
                 'threshold_high': s_thresh_high
             }
