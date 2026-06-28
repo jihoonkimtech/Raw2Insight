@@ -8,6 +8,7 @@ Purpose      : Machine Learning Anomaly Detection (Isolation Forest)
 """
 import numpy as np
 from sklearn.ensemble import IsolationForest
+import time
 
 class AIManager:
     def __init__(self):
@@ -15,6 +16,8 @@ class AIManager:
         # contamination: expected proportion of outliers (10%)
         self.models = {}
         self.sensitivities = {}
+        # track last training time to prevent cpu blocking
+        self.last_train_times = {}
 
     def detect(self, sensor_name, recent_data, protocol='analog', sensitivity=0.1):
         if not recent_data:
@@ -25,37 +28,48 @@ class AIManager:
             latest_val = recent_data[0] 
             return bool(latest_val >= 1), "HIGH", -1.0 if latest_val >= 1 else 1.0
 
-        # create sensor's IsolationForest model
-        if sensor_name not in self.models or self.sensitivities.get(sensor_name) != sensitivity:
-            print(f"[DEBUG] [AIManager] Re-building model for {sensor_name} with sensitivity {sensitivity}")
-            # contamination is sensitivity
-            self.models[sensor_name] = IsolationForest(contamination=sensitivity, random_state=42)
-            self.sensitivities[sensor_name] = sensitivity
-
         # require minimum data points to train meaningfully
         if len(recent_data) < 15:
             return False, "NORMAL", 0.0
 
+        current_time = time.time()
+        # train interval set to 600 seconds (10 minutes)
+        train_interval = 600
+        needs_training = False
+
+        # check if model needs init or retraining
+        if sensor_name not in self.models or self.sensitivities.get(sensor_name) != sensitivity:
+            print(f"[DEBUG] [AIManager] Re-building model for {sensor_name} with sensitivity {sensitivity}")
+            self.models[sensor_name] = IsolationForest(contamination=sensitivity, random_state=42)
+            self.sensitivities[sensor_name] = sensitivity
+            needs_training = True
+        elif current_time - self.last_train_times.get(sensor_name, 0) > train_interval:
+            # periodic retraining triggered
+            needs_training = True
+
         # reshape data for scikit-learn (e.g., [[val1], [val2], ...])
         X = np.array(recent_data).reshape(-1, 1)
-        # fit model with recent time-series trend
-        self.models[sensor_name].fit(X)
+        
+        if needs_training:
+            # fit model with recent time-series trend
+            self.models[sensor_name].fit(X)
+            self.last_train_times[sensor_name] = current_time
 
-        # predict latest point (1: normal, -1: anomaly)
-        latest_point = X[0].reshape(1, -1) # newest data is at index 0 (descending)
+        # predict latest point (newest data is at index 0)
+        latest_point = X[0].reshape(1, -1) 
         
         # extract anomaly score
-        #score = self.models[sensor_name].score_samples(latest_point)[0]
-        #prediction = self.models[sensor_name].predict(latest_point)
         score = self.models[sensor_name].decision_function(latest_point)[0]
-        #is_anomaly = bool(prediction[0] == -1)
         is_anomaly = bool(score < 0)
 
-        # decision anomaly direction using 10 means data
+        # decision anomaly direction using moving average
         direction = "NORMAL"
         if is_anomaly:
-            recent_mean = np.mean(recent_data[1:11]) if len(recent_data) > 1 else recent_data[0]
-            if recent_data[0] > recent_mean:
+            # calculate moving average of recent window (max 10 points)
+            window_size = min(10, len(recent_data))
+            moving_avg = np.mean(recent_data[:window_size])
+            
+            if recent_data[0] > moving_avg:
                 direction = "HIGH"  # anomaly cause data increase
             else:
                 direction = "LOW"   # anomaly cause data decrease

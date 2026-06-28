@@ -106,8 +106,8 @@ def loop():
             db.insert_data(calibrated_value, s_name)
 
             # load data
-            formatted_rows, values_only = db.get_aggregated_data(s_name)
-            raw_rows = db.get_raw_data(s_name)
+            formatted_rows, values_only = db.get_aggregated_data(s_name, limit=300)
+            raw_rows = db.get_raw_data(s_name, limit=60)
 
             # anomaly decision
             manual_intensity = 0.0
@@ -282,14 +282,14 @@ def loop():
             
             # carrying in payload
             payload[s_name] = {
-                'rows': formatted_rows,
-                'raw_rows': raw_rows,
+                'rows': formatted_rows[:60],  # send only recent 60 points to ui
+                'raw_rows': raw_rows,         # already limited to 60 above
                 'alert': is_anomaly,
                 'data_type': s_type,
                 'unit': s_unit,
                 'protocol': s_protocol,
                 'actuators': linked_acts_info,
-                'score': score,
+                'score': float(score),        # ensure float serialization
                 'threshold_low': s_thresh_low,
                 'threshold_high': s_thresh_high
             }

@@ -149,7 +149,7 @@ class DBManager:
             print(f"[DEBUG] [DBManager] Error reading timeseries samples: {e}")
             return []
 
-    def get_aggregated_data(self, sensor_name, limit=20):
+    def get_aggregated_data(self, sensor_name, limit=300):
         # fetch aggregated data (2-second moving average)
         try:
             samples = self.ts_store.read_samples(
