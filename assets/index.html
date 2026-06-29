@@ -271,7 +271,7 @@
                                 <div class="form-group form-row-inner">
                                     <div><input type="number" id="act-normal" placeholder="평상시 (0~255)"></div>
                                     <div>
-                                        <select id="act-dir">
+                                        <select id="act-dir" onchange="updateActuatorDirUI()">
                                             <option value="BOTH">양방향 (높음/낮음 이상 모두)</option>
                                             <option value="HIGH">단방향 (높음 이상일 때만)</option>
                                             <option value="LOW">단방향 (낮음 이상일 때만)</option>
@@ -592,12 +592,39 @@
         });
 
         const actPinMap = {
-            'digital_out': ['7', '8', '12', '13'],
-            'pwm': ['3', '5', '6', '9', '10', '11'] 
+            'digital_out': [
+                { pin: '12', label: 'DOUT01' }, 
+                { pin: '8', label: 'DOUT02' }, 
+                { pin: '7', label: 'DOUT03' }, 
+                { pin: '5', label: 'DOUT04' }
+            ],
+            'pwm': [
+                { pin: '11', label: 'POUT01' }, 
+                { pin: '10', label: 'POUT02' }, 
+                { pin: '9', label: 'POUT03' }, 
+                { pin: '6', label: 'POUT04' }
+            ] 
         };
         const senPinMap = {
-            'analog': ['A0', 'A1', 'A2', 'A3'],
-            'digital': ['2', '4']
+            'analog': [
+                { pin: 'A0', label: 'AIN01' }, 
+                { pin: 'A1', label: 'AIN02' }, 
+                { pin: 'A2', label: 'AIN03' }, 
+                { pin: 'A3', label: 'AIN04' }, 
+                { pin: 'A4', label: 'AIN05' }, 
+                { pin: 'A5', label: 'AIN06' }
+            ],
+            'digital': [
+                { pin: '2', label: 'DIN01' }, 
+                { pin: '4', label: 'DIN02' }
+            ]
+        };
+
+        const pinLabelMap = {
+            'A0': 'AIN01', 'A1': 'AIN02', 'A2': 'AIN03', 'A3': 'AIN04', 'A4': 'AIN05', 'A5': 'AIN06',
+            '2': 'DIN01', '4': 'DIN02',
+            '12': 'DOUT01', '8': 'DOUT02', '7': 'DOUT03', '5': 'DOUT04',
+            '11': 'POUT01', '10': 'POUT02', '9': 'POUT03', '6': 'POUT04'
         };
 
         function updateActuatorPinOptions() {
@@ -641,10 +668,10 @@
             } else {
                 physConfig.style.display = 'block';
                 vParams.style.display = 'none';
-                actPinMap[type].forEach(pin => {
+                actPinMap[type].forEach(item => {
                     const option = document.createElement('option');
-                    option.value = pin;
-                    option.text = `Pin ${pin}${type === 'pwm' ? ' (~)' : ''}`;
+                    option.value = item.pin;
+                    option.text = `${item.label} (Pin ${item.pin})`;
                     pinSelect.appendChild(option);
                 });
             }
@@ -670,10 +697,10 @@
                 digitalContainer.style.display = 'none';
                 
                 pinSelect.innerHTML = '';
-                senPinMap[protocol].forEach(pin => {
+                senPinMap[protocol].forEach(item => {
                     const option = document.createElement('option');
-                    option.value = pin;
-                    option.text = `Pin ${pin}`;
+                    option.value = item.pin;
+                    option.text = `${item.label} (Pin ${item.pin})`;
                     pinSelect.appendChild(option);
                 });
             } else if (protocol === 'digital') {
@@ -686,10 +713,10 @@
                 digitalContainer.style.display = 'block';
                 
                 pinSelect.innerHTML = '';
-                senPinMap[protocol].forEach(pin => {
+                senPinMap[protocol].forEach(item => {
                     const option = document.createElement('option');
-                    option.value = pin;
-                    option.text = `Pin D${pin}`;
+                    option.value = item.pin;
+                    option.text = `${item.label} (Pin D${item.pin})`;
                     pinSelect.appendChild(option);
                 });
             } else if (protocol === 'i2c') {
@@ -836,7 +863,8 @@
                 const sensPercent = Math.round(sensVal * 100);
                 
                 const protocolBadge = sen.protocol.toUpperCase();
-                const pinDisplay = `${protocolBadge} (${sen.pin})`;
+                const mappedLabel = pinLabelMap[sen.pin] || sen.pin;
+                const pinDisplay = `${protocolBadge} (${mappedLabel})`;
 
                 let threshHTML = '';
                 if (isDigital) {
@@ -896,7 +924,7 @@
                 let extra = {};
                 try { extra = JSON.parse(act.extra_params || '{}'); } catch(e){}
 
-                let pinTarget = act.pin;
+                let pinTarget = pinLabelMap[act.pin] || act.pin;
                 let conditionOut = '';
                 let delayLatch = '';
 
