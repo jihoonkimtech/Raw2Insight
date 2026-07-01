@@ -57,19 +57,24 @@ bool valid_pwm_pin(int pin_num) {
 }
 
 int read_analog(int pin_num) {
-  if (!valid_analog_pin(pin_num)) {
+  if (pin_num < 0 || pin_num > 5) {
     Serial.print("[MCU] [ERROR] Invalid analog pin A");
     Serial.println(pin_num);
     return 0;
   }
 
-  int val = analogRead(pin_num);
+  int actual_pin;
+  switch (pin_num) {
+    case 0: actual_pin = A0; break;
+    case 1: actual_pin = A1; break;
+    case 2: actual_pin = A2; break;
+    case 3: actual_pin = A3; break;
+    case 4: actual_pin = A4; break;
+    case 5: actual_pin = A5; break;
+    default: return 0;
+  }
 
-  Serial.print("[MCU] [SENSOR READ] Analog Pin A");
-  Serial.print(pin_num);
-  Serial.print(" Read: ");
-  Serial.println(val);
-
+  int val = analogRead(actual_pin);
   return val;
 }
 
@@ -179,7 +184,7 @@ int write_pwm(int pin_num, int val) {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   Bridge.begin();
   Wire.begin();
 
