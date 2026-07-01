@@ -269,7 +269,7 @@
 
                             <div id="physical-configs">
                                 <div class="form-group form-row-inner">
-                                    <div><input type="number" id="act-normal" placeholder="평상시 (0~255)"></div>
+                                    <div><input type="number" id="act-normal" placeholder="평상시 (0~255)" min="0" max="255" step="1" oninput="this.value = this.value.replace(/[^0-9]/g, ''); if(this.value !== '' && parseInt(this.value) > parseInt(this.max)) this.value = this.max;"></div>
                                     <div>
                                         <select id="act-dir" onchange="updateActuatorDirUI()">
                                             <option value="BOTH">양방향 (높음/낮음 이상 모두)</option>
@@ -279,8 +279,8 @@
                                     </div>
                                 </div>
                                 <div class="form-group form-row-inner">
-                                    <div><input type="number" id="act-low" placeholder="낮음 이상 시 (0~255)"></div>
-                                    <div><input type="number" id="act-high" placeholder="높음 이상 시 (0~255)"></div>
+                                    <div><input type="number" id="act-low" placeholder="낮음 이상 시 (0~255)" min="0" max="255" step="1" oninput="this.value = this.value.replace(/[^0-9]/g, ''); if(this.value !== '' && parseInt(this.value) > parseInt(this.max)) this.value = this.max;"></div>
+                                    <div><input type="number" id="act-high" placeholder="높음 이상 시 (0~255)" min="0" max="255" step="1" oninput="this.value = this.value.replace(/[^0-9]/g, ''); if(this.value !== '' && parseInt(this.value) > parseInt(this.max)) this.value = this.max;"></div>
                                 </div>
                             </div>
                             
@@ -634,6 +634,24 @@
             const vParams = document.getElementById('virtual-params-container');
             const uOptions = document.getElementById('universal-options');
 
+            const normalInput = document.getElementById('act-normal');
+            const lowInput = document.getElementById('act-low');
+            const highInput = document.getElementById('act-high');
+
+            if (type === 'digital_out') {
+                [normalInput, lowInput, highInput].forEach(el => {
+                    el.max = "1";
+                    el.placeholder = "0 또는 1";
+                    if (el.value !== '' && parseInt(el.value) > 1) el.value = "1";
+                });
+            } else {
+                [normalInput, lowInput, highInput].forEach(el => {
+                    el.max = "255";
+                    el.placeholder = "0~255";
+                    if (el.value !== '' && parseInt(el.value) > 255) el.value = "255";
+                });
+            }
+
             pinSelect.innerHTML = '';
 
             if (type === 'virtual_counter' || type === 'virtual_latch') {
@@ -862,7 +880,14 @@
                 const sensVal = sen.sensitivity || 0.1;
                 const sensPercent = Math.round(sensVal * 100);
                 
-                const protocolBadge = sen.protocol.toUpperCase();
+               let protocolBadge = '';
+                if (sen.protocol === 'analog') {
+                    protocolBadge = '<span class="badge badge-analog">아날로그</span>';
+                } else if (sen.protocol === 'digital') {
+                    protocolBadge = '<span class="badge badge-digital">디지털</span>';
+                } else if (sen.protocol === 'i2c') {
+                    protocolBadge = '<span class="badge badge-i2c">I2C</span>';
+                }
                 const mappedLabel = pinLabelMap[sen.pin] || sen.pin;
                 const pinDisplay = `${protocolBadge} (${mappedLabel})`;
 
@@ -945,9 +970,20 @@
                 if (extra.delay) dlArr.push(`⏱️${extra.delay}초 지연`);
                 if (extra.latch) dlArr.push(`🧲 래치 유지`);
                 delayLatch = dlArr.length > 0 ? dlArr.join(', ') : '-';
+
+                let typeBadge = '';
+                if (act.control_type === 'digital_out') {
+                    typeBadge = '<span class="badge badge-digital">디지털 출력</span>';
+                } else if (act.control_type === 'pwm') {
+                    typeBadge = '<span class="badge badge-pwm">PWM 출력</span>';
+                } else if (act.control_type === 'virtual_counter') {
+                    typeBadge = '<span class="badge badge-i2c">가상 카운터</span>';
+                } else if (act.control_type === 'virtual_latch') {
+                    typeBadge = '<span class="badge badge-i2c">가상 래치</span>';
+                }
                 
                 actTableHTML += `<tr>
-                    <td>${act.id}</td><td style="font-weight:bold;">${act.name}</td><td>${act.control_type}</td>
+                    <td>${act.id}</td><td style="font-weight:bold;">${act.name}</td><td>${typeBadge}</td>
                     <td style="font-family:monospace;">${pinTarget}</td>
                     <td style="font-size:0.9em; color:#444;">${conditionOut}</td>
                     <td style="font-size:0.9em; color:#d63031; font-weight:bold;">${delayLatch}</td>
@@ -984,9 +1020,9 @@
             if (dir === 'BOTH') {
                 lowInput.disabled = false; highInput.disabled = false;
             } else if (dir === 'HIGH') {
-                lowInput.disabled = true; lowInput.value = ''; highInput.disabled = false;
+                lowInput.disabled = true; lowInput.value = '0'; highInput.disabled = false; true; highInput.value = '';
             } else if (dir === 'LOW') {
-                lowInput.disabled = false; highInput.disabled = true; highInput.value = '';
+                lowInput.disabled = false; lowInput.value = ''; highInput.disabled = true; highInput.value = '0';
             }
         }
 
