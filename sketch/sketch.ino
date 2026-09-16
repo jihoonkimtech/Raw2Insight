@@ -10,6 +10,11 @@ Purpose      : Hardware interface for sensors and actuators
 #include "Arduino_RouterBridge.h"
 #include <Wire.h>
 
+// Per-call logs slow down the 5Hz loop, set to 1 for bench debugging
+#define MCU_VERBOSE 0
+#define VLOG(...) do { if (MCU_VERBOSE) Serial.print(__VA_ARGS__); } while (0)
+#define VLOGLN(...) do { if (MCU_VERBOSE) Serial.println(__VA_ARGS__); } while (0)
+
 /*
 L Terminal blocks
 - SCL    -> SCL
@@ -88,10 +93,10 @@ int read_digital(int pin_num) {
   pinMode(pin_num, INPUT);
   int val = digitalRead(pin_num);
 
-  Serial.print("[MCU] [SENSOR READ] Digital Pin D");
-  Serial.print(pin_num);
-  Serial.print(" Read: ");
-  Serial.println(val);
+  VLOG("[MCU] [SENSOR READ] Digital Pin D");
+  VLOG(pin_num);
+  VLOG(" Read: ");
+  VLOGLN(val);
 
   return val;
 }
@@ -116,17 +121,17 @@ String collect_i2c_bytes(int addr, int read_bytes) {
     count++;
   }
 
-  Serial.print("[MCU] Returning Bytes: ");
-  Serial.println(byteString);
+  VLOG("[MCU] Returning Bytes: ");
+  VLOGLN(byteString);
 
   return byteString;
 }
 
 String read_i2c_bytes(String addr_str, int read_bytes) {
-  Serial.print("[MCU] [SENSOR READ] I2C Device (");
-  Serial.print(addr_str);
-  Serial.print(") Request Bytes: ");
-  Serial.println(read_bytes);
+  VLOG("[MCU] [SENSOR READ] I2C Device (");
+  VLOG(addr_str);
+  VLOG(") Request Bytes: ");
+  VLOGLN(read_bytes);
 
   if (read_bytes <= 0) {
     return "";
@@ -138,12 +143,12 @@ String read_i2c_bytes(String addr_str, int read_bytes) {
 
 // Set register pointer first, then read (for register-mapped sensors like MPU6050)
 String read_i2c_reg(String addr_str, int reg, int read_bytes) {
-  Serial.print("[MCU] [SENSOR READ] I2C Device (");
-  Serial.print(addr_str);
-  Serial.print(") Reg 0x");
-  Serial.print(reg, HEX);
-  Serial.print(" Request Bytes: ");
-  Serial.println(read_bytes);
+  VLOG("[MCU] [SENSOR READ] I2C Device (");
+  VLOG(addr_str);
+  VLOG(") Reg 0x");
+  VLOG(reg, HEX);
+  VLOG(" Request Bytes: ");
+  VLOGLN(read_bytes);
 
   if (read_bytes <= 0 || reg < 0 || reg > 0xFF) {
     return "";
@@ -186,12 +191,12 @@ int write_i2c_bytes(String addr_str, String csv_bytes) {
 
   int result = Wire.endTransmission();
 
-  Serial.print("[MCU] [I2C WRITE] Device (");
-  Serial.print(addr_str);
-  Serial.print(") Bytes: ");
-  Serial.print(written);
-  Serial.print(" Result: ");
-  Serial.println(result);
+  VLOG("[MCU] [I2C WRITE] Device (");
+  VLOG(addr_str);
+  VLOG(") Bytes: ");
+  VLOG(written);
+  VLOG(" Result: ");
+  VLOGLN(result);
 
   // Return 1 on ACK, 0 on any bus error
   return (result == 0 && written > 0) ? 1 : 0;
@@ -338,13 +343,13 @@ String read_dht_bytes(int pin_num, int start_low_ms) {
     byteString += String(data[i]);
   }
 
-  Serial.print("[MCU] [SENSOR READ] DHT Pin D");
-  Serial.print(pin_num);
-  Serial.print(" Bytes: ");
-  Serial.print(byteString);
-  Serial.print(" (segments ");
-  Serial.print(n);
-  Serial.println(")");
+  VLOG("[MCU] [SENSOR READ] DHT Pin D");
+  VLOG(pin_num);
+  VLOG(" Bytes: ");
+  VLOG(byteString);
+  VLOG(" (segments ");
+  VLOG(n);
+  VLOGLN(")");
 
   return byteString;
 }
@@ -355,10 +360,10 @@ int read_i2c(String addr_str) {
   Wire.beginTransmission(addr);
   int result = Wire.endTransmission();
 
-  Serial.print("[MCU] [SENSOR READ] I2C Device (");
-  Serial.print(addr_str);
-  Serial.print(") Probe Result: ");
-  Serial.println(result == 0 ? 1 : 0);
+  VLOG("[MCU] [SENSOR READ] I2C Device (");
+  VLOG(addr_str);
+  VLOG(") Probe Result: ");
+  VLOGLN(result == 0 ? 1 : 0);
 
   return (result == 0) ? 1 : 0;
 }
@@ -383,12 +388,12 @@ int write_digital(int pin_num, int val) {
   }
   digitalWrite(pin_num, level);
 
-  Serial.print("[MCU] [ACTUATOR CONTROL] Digital Pin D");
-  Serial.print(pin_num);
-  Serial.print(" Write: ");
-  Serial.print(level == HIGH ? 1 : 0);
-  Serial.print(" Readback: ");
-  Serial.println(digitalRead(pin_num));
+  VLOG("[MCU] [ACTUATOR CONTROL] Digital Pin D");
+  VLOG(pin_num);
+  VLOG(" Write: ");
+  VLOG(level == HIGH ? 1 : 0);
+  VLOG(" Readback: ");
+  VLOGLN(digitalRead(pin_num));
 
   return 1;
 }
@@ -406,10 +411,10 @@ int write_pwm(int pin_num, int val) {
   analogWrite(pin_num, safe_val);
   out_mode[pin_num] = OUT_PWM;
 
-  Serial.print("[MCU] [ACTUATOR CONTROL] PWM Pin D");
-  Serial.print(pin_num);
-  Serial.print(" Write: ");
-  Serial.println(safe_val);
+  VLOG("[MCU] [ACTUATOR CONTROL] PWM Pin D");
+  VLOG(pin_num);
+  VLOG(" Write: ");
+  VLOGLN(safe_val);
 
   return 1;
 }

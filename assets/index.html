@@ -1,178 +1,346 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Raw2Insight AI Dashboard</title>
+    <title>Raw2Insight Control</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; transition: background-color 0.5s; }
-        .container { max-width: 100%; margin: auto; }
-        .header { display: flex; justify-content: space-between; align-items: center; }
-        
-        .status-badge { padding: 10px 20px; border-radius: 5px; font-weight: bold; color: white; }
-        .status-safe { background-color: #28a745; }
-        .status-alert { background-color: #dc3545; animation: blink 1s infinite; }
-        
-        /* responsive table wrapper */
-        .table-responsive { width: 100%; overflow-x: auto; display: block; margin-top: 20px; }
-        table { border-collapse: collapse; width: 100%; text-align: center; min-width: 600px; }
-        th, td { border: 1px solid #ccc; padding: 8px; vertical-align: middle; }
-        th { background-color: #f8f9fa; word-break: keep-all; }
-        .chart-container { position: relative; width: 100%; height: 300px; margin-top: 20px; }
-
-        @keyframes blink { 50% { opacity: 0.5; } }
-        .alert-bg { background-color: #ffe6e6; }
-
-        /* device management panel */
-        .device-panel { background: #f8f9fa; padding: 20px; margin-top: 30px; border-radius: 8px; border: 1px solid #ddd; }
-        .device-panel h3 { margin-top: 0; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
-        .device-panel h4 { margin-bottom: 10px; color: #333; }
-        .flex-row { display: flex; gap: 20px; flex-wrap: wrap; }
-        .flex-col { flex: 1; min-width: 200px; background: #fff; padding: 15px; border-radius: 5px; border: 1px solid #eee; }
-        .form-group { margin-bottom: 15px; }
-        
-        .form-group input, .form-group select { 
-            padding: 8px; 
-            width: 100%; 
-            box-sizing: border-box;
-            margin-top: 5px; 
-            border: 1px solid #ccc; 
-            border-radius: 4px;
-            height: 36px;
+        /* ===== theme tokens (dark is the default control-room look) ===== */
+        :root {
+            color-scheme: dark;
+            --page: #0d0d0d;
+            --surface: #1a1a19;
+            --surface-2: #222220;
+            --ink-1: #ffffff;
+            --ink-2: #c3c2b7;
+            --ink-3: #898781;
+            --grid: #2c2c2a;
+            --axis: #383835;
+            --border: rgba(255,255,255,0.10);
+            --series-1: #3987e5;
+            --series-1-wash: rgba(57,135,229,0.12);
+            --raw-line: rgba(137,135,129,0.55);
+            --virtual: #9085e9;
+            --virtual-wash: rgba(144,133,233,0.16);
+            --good: #0ca30c;
+            --good-ink: #0ca30c;
+            --warning: #fab219;
+            --critical: #d03b3b;
+            --critical-ink: #ff8a8a;
+            --critical-wash: rgba(208,59,59,0.14);
+            --accent-wash: rgba(57,135,229,0.16);
+            --accent-ink: #8fbcf2;
+            --input-bg: #121211;
+            --shadow: 0 1px 2px rgba(0,0,0,0.4);
         }
-        
-        .form-row-inner { display: flex; gap: 10px; width: 100%; }
-        .form-row-inner > div { flex: 1; }
+        @media (prefers-color-scheme: light) {
+            :root:not([data-theme="dark"]) {
+                color-scheme: light;
+                --page: #f9f9f7;
+                --surface: #fcfcfb;
+                --surface-2: #f0efec;
+                --ink-1: #0b0b0b;
+                --ink-2: #52514e;
+                --ink-3: #898781;
+                --grid: #e1e0d9;
+                --axis: #c3c2b7;
+                --border: rgba(11,11,11,0.10);
+                --series-1: #2a78d6;
+                --series-1-wash: rgba(42,120,214,0.10);
+                --raw-line: rgba(137,135,129,0.6);
+                --virtual: #4a3aa7;
+                --virtual-wash: rgba(74,58,167,0.10);
+                --good-ink: #006300;
+                --critical-ink: #b42323;
+                --critical-wash: rgba(208,59,59,0.08);
+                --accent-wash: rgba(42,120,214,0.10);
+                --accent-ink: #1c5cab;
+                --input-bg: #ffffff;
+                --shadow: 0 1px 2px rgba(0,0,0,0.06);
+            }
+        }
+        :root[data-theme="light"] {
+            color-scheme: light;
+            --page: #f9f9f7;
+            --surface: #fcfcfb;
+            --surface-2: #f0efec;
+            --ink-1: #0b0b0b;
+            --ink-2: #52514e;
+            --ink-3: #898781;
+            --grid: #e1e0d9;
+            --axis: #c3c2b7;
+            --border: rgba(11,11,11,0.10);
+            --series-1: #2a78d6;
+            --series-1-wash: rgba(42,120,214,0.10);
+            --raw-line: rgba(137,135,129,0.6);
+            --virtual: #4a3aa7;
+            --virtual-wash: rgba(74,58,167,0.10);
+            --good-ink: #006300;
+            --critical-ink: #b42323;
+            --critical-wash: rgba(208,59,59,0.08);
+            --accent-wash: rgba(42,120,214,0.10);
+            --accent-ink: #1c5cab;
+            --input-bg: #ffffff;
+            --shadow: 0 1px 2px rgba(0,0,0,0.06);
+        }
 
-        .form-inner { display: block; gap: 10px; width: 100%; }
-        .form-inner > div { flex: 1; }
+        /* ===== page frame: exactly one viewport tall on laptop/monitor ===== */
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
+        body {
+            background: var(--page);
+            color: var(--ink-1);
+            font-family: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+            font-size: 14px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .ink-2 { color: var(--ink-2); }
+        .ink-3 { color: var(--ink-3); }
+        .ink-good { color: var(--good-ink); }
+        .ink-warn { color: var(--critical-ink); }
+        .ink-accent { color: var(--accent-ink); }
+        .ink-virtual { color: var(--virtual); }
+        .num { font-variant-numeric: tabular-nums; }
 
-        .form-btn { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; }
-        .form-btn:hover { background-color: #0056b3; }
-        
-        .delete-btn { background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
-        .delete-btn:hover { background-color: #c82333; }
+        /* top bar */
+        .topbar {
+            display: flex; align-items: center; gap: 16px;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            flex: 0 0 auto;
+        }
+        .brand { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+        .brand b { font-size: 16px; letter-spacing: 0.2px; }
+        .brand span { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+        .tabs { display: flex; gap: 4px; margin-left: 8px; }
+        .tab-btn {
+            background: transparent; border: 1px solid transparent; color: var(--ink-2);
+            padding: 6px 12px; border-radius: 6px; cursor: pointer; font: inherit; font-weight: 600;
+        }
+        .tab-btn:hover { background: var(--surface-2); }
+        .tab-btn.active { background: var(--accent-wash); color: var(--accent-ink); border-color: var(--border); }
+        .tab-btn:focus-visible, .icon-btn:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+        .spacer { flex: 1; }
+        .icon-btn {
+            background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--border);
+            height: 32px; min-width: 32px; padding: 0 10px; border-radius: 6px; cursor: pointer; font: inherit;
+        }
 
-        /* badges */
-        .act-container { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
-        .act-box { 
-            padding: 5px 12px; 
-            border-radius: 20px; 
-            font-size: 0.85em; 
-            font-weight: bold; 
-            transition: 0.3s; 
-            border: 1px solid #ccc; 
-            display: inline-flex; 
-            align-items: center; 
+        /* status chip: icon + label, never color alone */
+        .chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 10px; border-radius: 999px; font-weight: 600; font-size: 12px;
+            border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-2);
             white-space: nowrap;
         }
-        .act-on { background-color: #ffc107; color: #000; border-color: #ffc107; box-shadow: 0 0 10px rgba(255, 193, 7, 0.7); } 
-        .act-off { background-color: #e9ecef; color: #6c757d; }
+        .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: 0 0 auto; }
+        .chip.ok .dot { background: var(--good); }
+        .chip.alert { background: var(--critical-wash); color: var(--critical-ink); border-color: var(--critical); }
+        .chip.alert .dot { background: var(--critical); animation: pulse 1s infinite; }
+        .chip.stale .dot { background: var(--warning); }
+        @keyframes pulse { 50% { opacity: 0.35; } }
+        @media (prefers-reduced-motion: reduce) { .chip.alert .dot { animation: none; } }
 
-        /* tab board */
-        .tab-nav { display: flex; gap: 10px; margin-top: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; flex-wrap: wrap; }
-        .tab-btn { background-color: #f8f9fa; border: 1px solid #ccc; padding: 10px 20px; cursor: pointer; border-radius: 5px 5px 0 0; font-weight: bold; color: #333; transition: 0.3s; flex-grow: 1; }
-        .tab-btn.active { background-color: #007bff; color: white; border-color: #007bff; }
-        .tab-btn:hover:not(.active) { background-color: #e2e6ea; }
-        .tab-content { display: none; animation: fadeIn 0.4s; }
-        .tab-content.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+        .tab-content { display: none; }
+        .tab-content.active { display: flex; }
 
-        /* chart board */
-        #dynamic-charts-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-top: 20px;
+        /* ===== dashboard ===== */
+        #tab-dashboard { flex-direction: column; gap: 12px; padding: 12px 16px 16px; flex: 1 1 auto; min-height: 0; }
+        .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; flex: 0 0 auto; }
+        .kpi {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+            padding: 8px 12px; min-width: 0; box-shadow: var(--shadow);
         }
-        #dynamic-charts-container > div {
-            margin-top: 0 !important; 
+        .kpi .label { font-size: 12px; color: var(--ink-3); }
+        .kpi .value { font-size: 22px; font-weight: 600; line-height: 1.25; white-space: nowrap; }
+        .kpi .value small { font-size: 12px; font-weight: 500; color: var(--ink-2); margin-left: 2px; }
+        .kpi.alert { border-color: var(--critical); background: var(--critical-wash); }
+        .kpi.alert .value { color: var(--critical-ink); }
+        .meter { height: 4px; border-radius: 2px; background: var(--series-1-wash); margin-top: 6px; overflow: hidden; }
+        .meter > i { display: block; height: 100%; width: 0; background: var(--series-1); border-radius: 2px; transition: width 0.3s; }
+        .meter.warn > i { background: var(--warning); }
+        .meter.crit > i { background: var(--critical); }
+
+        .grid {
+            flex: 1 1 auto; min-height: 0;
+            display: grid; gap: 12px;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            grid-auto-rows: minmax(190px, 1fr);
+            overflow: auto;
+        }
+        .empty {
+            grid-column: 1 / -1; align-self: center; justify-self: center; text-align: center;
+            color: var(--ink-2); padding: 32px;
+        }
+        .empty button { margin-top: 12px; }
+
+        .card {
+            container-type: size;
+            background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+            padding: 10px 12px; min-width: 0; min-height: 0;
+            display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow);
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .card.alert { border-color: var(--critical); box-shadow: 0 0 0 1px var(--critical) inset; }
+        .card-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+        .card-title { min-width: 0; flex: 1; }
+        .card-title .name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+        .card-title .meta { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+        .readout-row { display: flex; align-items: flex-end; gap: 12px; min-width: 0; }
+        .readout { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+        .readout .value { font-size: 30px; font-weight: 600; line-height: 1; }
+        .readout .unit { font-size: 13px; color: var(--ink-2); }
+        .stats { display: flex; gap: 12px; margin: 0 0 0 auto; font-size: 11px; min-width: 0; }
+        .stats div { display: flex; flex-direction: column; align-items: flex-end; }
+        .stats dt { color: var(--ink-3); }
+        .stats dd { margin: 0; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+        .acts { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; min-height: 0; }
+        .acts::-webkit-scrollbar { display: none; }
+        .act {
+            display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+            font-size: 11px; padding: 2px 8px; border-radius: 999px;
+            border: 1px solid var(--border); color: var(--ink-2); background: var(--surface-2);
+        }
+        .act .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); }
+        .act.on { background: var(--accent-wash); color: var(--ink-1); border-color: var(--series-1); }
+        .act.on .dot { background: var(--series-1); }
+        .act.von { background: var(--virtual-wash); color: var(--ink-1); border-color: var(--virtual); }
+        .act.von .dot { background: var(--virtual); }
+        .act button {
+            border: none; border-radius: 999px; padding: 1px 6px; font: inherit; font-size: 10px; cursor: pointer;
+            background: var(--surface); color: var(--ink-1); border: 1px solid var(--border);
+        }
+        .legend { display: flex; gap: 12px; font-size: 11px; color: var(--ink-3); }
+        .legend i { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--series-1); vertical-align: middle; margin-right: 4px; }
+        .legend i.raw { border-top: 1px solid var(--raw-line); }
+        .legend i.thr { border-top: 1px dashed var(--ink-3); }
+        .plot { position: relative; flex: 1 1 auto; min-height: 60px; }
+        .plot canvas { position: absolute; inset: 0; }
+
+        /* shrink gracefully when many cards share the screen */
+        @container (max-height: 230px) {
+            .stats { display: none; }
+            .legend { display: none; }
+            .readout .value { font-size: 24px; }
+        }
+        @container (max-width: 340px) {
+            .stats div:nth-child(n+3) { display: none; }
         }
 
-        /* setting board */
-        .settings-layout {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-top: 20px;
-            align-items: start;
+        /* ===== settings (existing forms, themed) ===== */
+        .settings-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 16px 24px; flex-direction: column; }
+        .settings-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+        .device-panel { background: var(--surface); padding: 16px; border-radius: 10px; border: 1px solid var(--border); min-width: 0; }
+        .device-panel h3 { margin: 0 0 12px; font-size: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+        .device-panel h4 { margin: 0 0 10px; color: var(--ink-2); font-size: 14px; }
+        .flex-row { display: flex; gap: 16px; flex-wrap: wrap; }
+        .flex-col { flex: 1; min-width: 240px; background: var(--surface-2); padding: 14px; border-radius: 8px; border: 1px solid var(--border); }
+        .form-group { margin-bottom: 10px; }
+        .form-group input, .form-group select, .dynamic-input {
+            padding: 6px 8px; width: 100%; margin-top: 4px; height: 34px;
+            border: 1px solid var(--border); border-radius: 6px;
+            background: var(--input-bg); color: var(--ink-1); font: inherit;
         }
-        
-        .current-val { font-size: 1.05em; font-weight: 500; min-width: 110px; text-align: center; }
-
-        .sys-health-container { display: flex; gap: 15px; background: #fff; padding: 10px 20px; border-radius: 8px; border: 1px solid #ccc; font-size: 0.9em; font-weight: bold; }
-        .health-item { display: flex; align-items: center; gap: 5px; }
-        .health-val { padding: 3px 8px; border-radius: 4px; color: white; min-width: 45px; text-align: center; transition: 0.3s; }
-        .health-safe { background-color: #28a745; }
-        .health-warn { background-color: #ffc107; color: #000; }
-        .health-danger { background-color: #dc3545; }
-
-        .act-virtual-on { background-color: #6f42c1; color: #fff; border-color: #59339d; box-shadow: 0 0 8px rgba(111, 66, 193, 0.6); }
-        .act-virtual-off { background-color: #e0d8f0; color: #6f42c1; border-color: #c9bcf0; }
-
-        .btn-reset {
-            background-color: #ff5e57;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 0.75em;
-            font-weight: bold;
-            transition: background 0.3s;
-            margin-left: 10px;
+        .form-group input:disabled { opacity: 0.5; }
+        .form-group input:focus, .form-group select:focus, .dynamic-input:focus { outline: 2px solid var(--series-1); outline-offset: 0; }
+        .form-row-inner { display: flex; gap: 8px; width: 100%; }
+        .form-row-inner > div { flex: 1; min-width: 0; }
+        .opt-box { background: var(--page); border: 1px solid var(--border); padding: 10px; border-radius: 6px; margin-bottom: 10px; }
+        .opt-box input[type=number] { background: var(--input-bg); color: var(--ink-1); border: 1px solid var(--border); border-radius: 4px; }
+        .form-btn {
+            background: var(--series-1); color: #fff; border: none; padding: 9px 14px; border-radius: 6px;
+            cursor: pointer; width: 100%; font: inherit; font-weight: 600;
         }
-        .btn-reset:hover { background-color: #d63031; }
-        .dynamic-input {
-            width: 100%;
-            padding: 10px;
-            margin: 5px 0;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            box-sizing: border-box;
-            font-size: 14px;
-            outline: none;
+        .form-btn:hover { filter: brightness(1.1); }
+        .delete-btn, .btn-reset {
+            background: transparent; color: var(--critical-ink); border: 1px solid var(--critical);
+            padding: 3px 8px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px;
         }
-        .dynamic-input:focus { border-color: #6f42c1; }
-        
-        /* mobile 1-column layout optimization */
+        .delete-btn:hover, .btn-reset:hover { background: var(--critical-wash); }
+        .delete-btn { white-space: nowrap; }
+        td:nth-child(2) { white-space: nowrap; }
+        .table-responsive { width: 100%; overflow-x: auto; margin-bottom: 16px; }
+        table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 13px; }
+        th, td { border-bottom: 1px solid var(--border); padding: 8px 6px; text-align: left; vertical-align: middle; }
+        th { color: var(--ink-3); font-weight: 600; font-size: 12px; white-space: nowrap; }
+        td { font-variant-numeric: tabular-nums; }
+        .badge, .tag {
+            display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+            border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-2); white-space: nowrap;
+        }
+        .badge-analog, .badge-pwm, .tag-accent { background: var(--accent-wash); color: var(--accent-ink); }
+        .badge-i2c { background: var(--virtual-wash); color: var(--virtual); }
+        .tag-crit { background: var(--critical-wash); color: var(--critical-ink); }
+
+        /* ===== small screens: scroll the page instead of squeezing ===== */
+        @media (max-width: 1600px) {
+            .settings-layout { grid-template-columns: minmax(0, 1fr); }
+        }
+        @media (max-width: 900px) {
+            .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
         @media (max-width: 768px) {
-            #dynamic-charts-container { grid-template-columns: 1fr; }
-            .settings-layout { grid-template-columns: 1fr; }
-            .header { flex-direction: column; align-items: flex-start; gap: 15px; }
-            .sys-health-container { width: 100%; justify-content: space-between; box-sizing: border-box; }
-            .status-badge { width: 100%; text-align: center; box-sizing: border-box; }
-            .flex-row { flex-direction: column; }
+            body { overflow: auto; height: auto; }
+            main { min-height: auto; }
+            .topbar { flex-wrap: wrap; gap: 8px 12px; }
+            .tabs { order: 3; width: 100%; margin: 0; }
+            .tabs .tab-btn { flex: 1; }
+            .brand span { display: none; }
+            .topbar .spacer { display: none; }
+            #connChip { margin-left: auto; }
+            #tab-dashboard { padding: 12px 16px; }
+            .grid { overflow: visible; grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: none !important; grid-auto-rows: 250px; }
+            .settings-scroll { overflow: visible; }
             .form-row-inner { flex-direction: column; }
+            .flex-col { min-width: 0; }
+        }
+        @media (max-width: 480px) {
+            .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div>
-                <h2>Raw2Insight Edge AI</h2>
-                <p>2초 단위 집계 및 Isolation Forest 이상 탐지</p>
-            </div>
-            <div class="sys-health-container" id="sysHealthUI" style="display:none;">
-                <div class="health-item">🖥️ CPU: <span id="cpuVal" class="health-val health-safe">0%</span></div>
-                <div class="health-item">💾 RAM: <span id="ramVal" class="health-val health-safe">0%</span></div>
-            </div>
-            <div id="aiStatus" class="status-badge status-safe">상태: 정상</div>
+    <header class="topbar">
+        <div class="brand">
+            <b>Raw2Insight</b>
+            <span>엣지 AI 센서 관제 · Isolation Forest</span>
         </div>
-        
-        <div class="tab-nav">
-            <button class="tab-btn active" onclick="switchTab(event, 'tab-dashboard')">📊 대시보드</button>
-            <button class="tab-btn" onclick="switchTab(event, 'tab-settings')">⚙️ 장치 설정</button>
-        </div>
+        <nav class="tabs" role="tablist">
+            <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab(event, 'tab-dashboard')">대시보드</button>
+            <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab(event, 'tab-settings')">장치 설정</button>
+        </nav>
+        <div class="spacer"></div>
+        <span id="connChip" class="chip stale"><span class="dot"></span><span>연결 대기</span></span>
+        <span id="aiStatus" class="chip ok" role="status" aria-live="polite"><span class="dot"></span><span>시스템 정상</span></span>
+        <button id="themeBtn" class="icon-btn" onclick="toggleTheme()" aria-label="테마 전환">테마</button>
+    </header>
 
-        <div id="tab-dashboard" class="tab-content active">
-            <div id="dynamic-charts-container"></div>
-        </div>
-      
-        <div id="tab-settings" class="tab-content">
+    <main>
+        <section id="tab-dashboard" class="tab-content active">
+            <div class="kpis">
+                <div class="kpi"><div class="label">센서</div><div class="value num" id="kpiSensors">0</div></div>
+                <div class="kpi" id="kpiAlertBox"><div class="label">이상 감지</div><div class="value num" id="kpiAlerts">0</div></div>
+                <div class="kpi"><div class="label">작동 중인 출력</div><div class="value num" id="kpiActs">0<small>/ 0</small></div></div>
+                <div class="kpi"><div class="label">갱신 속도</div><div class="value num" id="kpiRate">--<small>Hz</small></div></div>
+                <div class="kpi"><div class="label">CPU</div><div class="value num" id="cpuVal">--<small>%</small></div><div class="meter" id="cpuMeter"><i></i></div></div>
+                <div class="kpi"><div class="label">RAM</div><div class="value num" id="ramVal">--<small>%</small></div><div class="meter" id="ramMeter"><i></i></div></div>
+            </div>
+            <div class="grid" id="sensorGrid">
+                <div class="empty" id="emptyState">
+                    <div>표시할 센서 데이터가 아직 없어요.</div>
+                    <div class="ink-3">센서를 등록하면 여기에 실시간으로 나타나요.</div>
+                    <button class="icon-btn" onclick="document.querySelectorAll('.tab-btn')[1].click()">장치 설정 열기</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-settings" class="tab-content settings-scroll">
             <div class="settings-layout">
                 
                 <div class="device-panel">
@@ -265,7 +433,7 @@
                                 <select id="act-pin"></select>
                             </div>
                             
-                            <div id="virtual-params-container" style="display:none; background:#f4f0ff; padding:10px; border-radius:5px; margin-bottom:10px;">
+                            <div id="virtual-params-container" class="opt-box opt-virtual" style="display:none;">
                             </div>
 
                             <div id="physical-configs">
@@ -285,11 +453,11 @@
                                 </div>
                             </div>
                             
-                            <div id="universal-options" style="background:#eef; padding:10px; border-radius:5px; margin-bottom:10px; border: 1px solid #ccd;">
-                                <label style="font-size:0.9em; color:#333; cursor:pointer;">
+                            <div id="universal-options" class="opt-box">
+                                <label style="font-size:0.9em; cursor:pointer;">
                                     <input type="checkbox" id="act-use-latch" style="vertical-align:middle;"> 🧲 한 번 켜지면 계속 유지 (래치)
                                 </label>
-                                <div style="margin-top:8px; font-size:0.9em; color:#555;">
+                                <div class="ink-2" style="margin-top:8px; font-size:0.9em;">
                                     ⏱️ 이상 발생 후 <input type="number" id="act-delay" placeholder="0" style="width:50px; padding:2px;"> 초 뒤에 작동 시작 (0이면 즉시)
                                 </div>
                             </div>
@@ -323,274 +491,451 @@
                 </div>
 
             </div>
-        </div>
-    </div>
+        </section>
+    </main>
 
     <script>
         const socket = io();
 
-        socket.on('connect', () => {
-            socket.emit('client_ready', { status: "connected" });
-        });
+        // Chart window shown on each card
+        const WINDOW_MS = 60000;
+        // Show a stale warning when no data arrives for this long
+        const STALE_MS = 3000;
 
-        const charts = {};
+        // name -> { el, chart, points, meta, dirty }
+        const cards = {};
+        let cardSeq = 0;
+        let lastRx = 0;
+        let lastServerTs = 0;
 
-        const colorPalette = [
-            { border: '#007bff', bg: 'rgba(0, 123, 255, 0.2)' },  
-            { border: '#28a745', bg: 'rgba(40, 167, 69, 0.2)' },  
-            { border: '#fd7e14', bg: 'rgba(253, 126, 20, 0.2)' }, 
-            { border: '#6f42c1', bg: 'rgba(111, 66, 193, 0.2)' }, 
-            { border: '#17a2b8', bg: 'rgba(23, 162, 184, 0.2)' }  
-        ];
-
-        function timeToSec(t) {
-            if (!t || typeof t !== 'string') return -1;
-            const parts = t.split(':').map(Number);
-            if (parts.length !== 3 || parts.some(isNaN)) return -1;
-            return parts[0] * 3600 + parts[1] * 60 + parts[2];
-        }
-        
-        function sortRowsByTime(rows) {
-            return [...rows].sort((a, b) => timeToSec(a[0]) - timeToSec(b[0]));
-        }
-        
-        function buildTrendLine(values) {
-            let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0, count = 0;
-            values.forEach((y, x) => {
-                if (y !== null && y !== undefined) {
-                    sumX += x; sumY += y; sumXY += x * y; sumXX += x * x; count++;
-                }
-            });
-            if (count <= 1) return [...values];
-            const denominator = count * sumXX - sumX * sumX;
-            if (denominator === 0) return [...values];
-            const slope = (count * sumXY - sumX * sumY) / denominator;
-            const intercept = (sumY - slope * sumX) / count;
-            return values.map((_, x) => slope * x + intercept);
+        /* ---------- theme ---------- */
+        function cssVar(name) {
+            return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
         }
 
-        socket.on('update_dashboard_multi', function(payload) {
-            const container = document.getElementById('dynamic-charts-container');
-            let anyAnomaly = false;
+        function applyTheme(theme) {
+            if (theme) document.documentElement.setAttribute('data-theme', theme);
+            else document.documentElement.removeAttribute('data-theme');
+            Object.values(cards).forEach(c => { styleChart(c); c.dirty = true; });
+        }
 
-            if (payload['__sys_health__']) {
-                const health = payload['__sys_health__'];
-                document.getElementById('sysHealthUI').style.display = 'flex';
-                
-                const cpuEl = document.getElementById('cpuVal');
-                const ramEl = document.getElementById('ramVal');
-                
-                cpuEl.innerText = health.cpu + '%';
-                if(health.cpu < 70) cpuEl.className = 'health-val health-safe';
-                else if(health.cpu < 90) cpuEl.className = 'health-val health-warn';
-                else cpuEl.className = 'health-val health-danger';
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme')
+                || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            const next = current === 'dark' ? 'light' : 'dark';
+            try { localStorage.setItem('r2i-theme', next); } catch (e) {}
+            applyTheme(next);
+        }
 
-                ramEl.innerText = health.ram + '%';
-                if(health.ram < 70) ramEl.className = 'health-val health-safe';
-                else if(health.ram < 90) ramEl.className = 'health-val health-warn';
-                else ramEl.className = 'health-val health-danger';
-            }
-        
-            Object.keys(payload).forEach(sensorName => {
-                if (sensorName === '__sys_health__') return;
-              
-                const data = payload[sensorName];
-                const rows = data.rows || [];
-                const rawRows = data.raw_rows || [];
-                const isAnomaly = data.alert;
-        
-                const sType = data.data_type || '데이터';
-                const sScore = data.score;
-                const sUnit = data.unit || '';
-                const sProtocol = data.protocol || 'analog';
-                const isDigital = (sProtocol === 'digital');
-        
-                if (isAnomaly) anyAnomaly = true;
-        
-                if (!document.getElementById(`panel-${sensorName}`)) {
-                    const panelHTML = `
-                        <div id="panel-${sensorName}" style="border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-top: 20px; background: #fff;">
-                            <div class="header">
-                                <h3 style="margin:0;">📊 ${sensorName} <span style="font-size:0.7em; color:#666;">(${sType}${isDigital ? ' - 디지털' : ''})</span></h3>
-                                <div id="val-${sensorName}" class="current-val" style="font-size:1.05em; font-weight:500; min-width:110px; text-align:center;">-- ${sUnit}</div>
-                                <div id="status-${sensorName}" class="status-badge status-safe">상태: 정상</div>
-                            </div>
-                            <div id="act-container-${sensorName}" class="act-container"></div>
-        
-                            <div class="chart-container">
-                                <canvas id="chart-${sensorName}"></canvas>
-                            </div>
-                        </div>
-                    `;
-                    container.insertAdjacentHTML('beforeend', panelHTML);
-        
-                    const color = colorPalette[Object.keys(charts).length % colorPalette.length];
-        
-                    const ctx = document.getElementById(`chart-${sensorName}`).getContext('2d');
-                    charts[sensorName] = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: [],
-                            datasets: [
-                                {
-                                    label: isDigital ? '상태 (디지털)' : '원본 데이터',
-                                    data: [],
-                                    borderColor: isDigital ? color.border : 'rgba(110, 110, 110, 0.6)',
-                                    backgroundColor: isDigital ? color.bg : 'transparent',
-                                    borderWidth: isDigital ? 2 : 1,
-                                    fill: isDigital ? true : false,
-                                    stepped: isDigital ? true : false,
-                                    tension: 0,
-                                    pointRadius: isDigital ? 0 : 1.5,
-                                    spanGaps: true
-                                },
-                                {
-                                    label: '추세선',
-                                    data: [],
-                                    borderColor: 'rgba(50, 50, 50, 0.6)',
-                                    borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0, spanGaps: true, hidden: isDigital
-                                },
-                                {
-                                    label: '안정값',
-                                    data: [],
-                                    borderColor: color.border, backgroundColor: color.bg, borderWidth: 3, fill: false, tension: 0.18, pointRadius: 2, pointHoverRadius: 4, spanGaps: true, hidden: isDigital
-                                },
-                                {
-                                    label: '상한선',
-                                    data: [], borderColor: 'rgba(220, 53, 69, 0.3)', borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0, hidden: isDigital
-                                },
-                                {
-                                    label: '하한선',
-                                    data: [], borderColor: 'rgba(0, 123, 255, 0.3)', borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0, tension: 0, hidden: isDigital
-                                }
-                            ]
-                        },
-                        options: {
-                            responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-                            plugins: {
-                                legend: { 
-                                    labels: { boxWidth: 28, usePointStyle: false, padding: 14 },
-                                    filter: function(item, chart) { return isDigital ? item.datasetIndex === 0 : true; }
-                                },
-                                tooltip: { callbacks: { title: function(context) { return `시각: ${context[0].label}`; } } }
-                            },
-                            scales: {
-                                x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { display: true, color: 'rgba(0,0,0,0.06)' } },
-                                y: {
-                                    min: isDigital ? -0.2 : undefined, max: isDigital ? 1.2 : undefined,
-                                    ticks: { 
-                                        precision: 0,
-                                        callback: function(value) { return (isDigital && (value === 0 || value === 1)) ? value : isDigital ? '' : value; }
-                                    },
-                                    grid: { color: 'rgba(0,0,0,0.08)' }
-                                }
+        (function initTheme() {
+            let saved = null;
+            try { saved = localStorage.getItem('r2i-theme'); } catch (e) {}
+            // Dark is the default control-room look
+            applyTheme(saved || 'dark');
+        })();
+
+        /* ---------- formatting ---------- */
+        function fmt(v) {
+            if (v === null || v === undefined || Number.isNaN(v)) return '--';
+            const a = Math.abs(v);
+            if (a < 0.005) return '0';
+            if (a >= 1000) return v.toFixed(0);
+            if (a >= 100) return v.toFixed(1).replace(/\.0$/, '');
+            return v.toFixed(2).replace(/\.?0+$/, '') || '0';
+        }
+
+        function fmtClock(ms) {
+            const d = new Date(ms);
+            return d.toTimeString().slice(0, 8);
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+        }
+
+        const PROTOCOL_LABEL = { analog: '아날로그', digital: '디지털', i2c: 'I2C', dht: 'DHT' };
+
+        /* ---------- card creation ---------- */
+        function ensureCard(name, meta) {
+            if (cards[name]) return cards[name];
+            const id = `card-${++cardSeq}`;
+            const isDigital = meta.protocol === 'digital';
+            const el = document.createElement('article');
+            el.className = 'card';
+            el.id = id;
+            el.innerHTML = `
+                <div class="card-head">
+                    <div class="card-title">
+                        <span class="name">${escapeHtml(name)}</span>
+                        <span class="meta"></span>
+                    </div>
+                    <span class="chip ok"><span class="dot"></span><span class="chip-text">정상</span></span>
+                </div>
+                <div class="readout-row">
+                    <div class="readout"><span class="value num">--</span><span class="unit"></span></div>
+                    <dl class="stats">
+                        <div><dt>최소</dt><dd class="s-min">--</dd></div>
+                        <div><dt>최대</dt><dd class="s-max">--</dd></div>
+                        <div><dt>평균</dt><dd class="s-avg">--</dd></div>
+                        <div><dt>AI 점수</dt><dd class="s-score">--</dd></div>
+                    </dl>
+                </div>
+                <div class="acts"></div>
+                <div class="legend">${isDigital
+                    ? '<span><i></i>상태 (0/1)</span>'
+                    : '<span><i class="raw"></i>원본</span><span><i></i>2초 평균</span><span class="thr-key" hidden><i class="thr"></i>임계값</span>'}
+                </div>
+                <div class="plot"><canvas aria-label="${escapeHtml(name)} 최근 60초 추이" role="img"></canvas></div>
+            `;
+            document.getElementById('emptyState').hidden = true;
+            document.getElementById('sensorGrid').appendChild(el);
+
+            const card = { el, points: [], meta, dirty: true, isDigital };
+            card.chart = createChart(el.querySelector('canvas'), isDigital);
+            styleChart(card);
+            cards[name] = card;
+            requestLayout();
+            return card;
+        }
+
+        function createChart(canvas, isDigital) {
+            return new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    datasets: [
+                        // raw samples: thin, recessive
+                        { label: '원본', data: [], borderWidth: 1, pointRadius: 0, tension: 0, hidden: isDigital },
+                        // smoothed (or digital state): the series line
+                        { label: isDigital ? '상태' : '2초 평균', data: [], borderWidth: 2, pointRadius: 0,
+                          pointHoverRadius: 4, tension: 0.2, stepped: isDigital, fill: isDigital },
+                        { label: '상한', data: [], borderWidth: 1, borderDash: [4, 4], pointRadius: 0 },
+                        { label: '하한', data: [], borderWidth: 1, borderDash: [4, 4], pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    animation: false,
+                    parsing: false,
+                    normalized: true,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            filter: item => item.datasetIndex < 2,
+                            callbacks: {
+                                title: items => items.length ? fmtClock(items[0].parsed.x) : '',
+                                label: item => ` ${item.dataset.label}: ${fmt(item.parsed.y)}`
                             }
                         }
-                    });
-                    charts[sensorName].baseColor = color;
-                }
-        
-                const badge = document.getElementById(`status-${sensorName}`);
-                const chartObj = charts[sensorName];
-                const valDisplay = document.getElementById(`val-${sensorName}`);
-                const targetDatasetIndex = isDigital ? 0 : 2;
-
-                if (isAnomaly) {
-                    badge.className = 'status-badge status-alert';
-                    badge.innerText = '⚠️ 이상 탐지됨! ';
-                    badge.innerText += (sScore === -1) ? '' : (sScore === 0) ? ' (사용자 지정)' : ` (${sScore.toFixed(2)})`;
-                    chartObj.data.datasets[targetDatasetIndex].borderColor = '#dc3545';
-                    chartObj.data.datasets[targetDatasetIndex].backgroundColor = 'rgba(220, 53, 69, 0.2)';
-                    valDisplay.style.color = '#dc3545';
-                } else {
-                    badge.className = 'status-badge status-safe';
-                    badge.innerText = '✅ 정상';
-                    chartObj.data.datasets[targetDatasetIndex].borderColor = chartObj.baseColor.border;
-                    chartObj.data.datasets[targetDatasetIndex].backgroundColor = chartObj.baseColor.bg;
-                    valDisplay.style.color = chartObj.baseColor.border;
-                }
-        
-                const aggrRows = sortRowsByTime(rows);
-                const rawRowsList = sortRowsByTime(rawRows);
-                
-                const rawStartTime = rawRowsList.length > 0 ? timeToSec(rawRowsList[0][0]) : 0;
-                const aggrStartTime = aggrRows.length > 0 ? timeToSec(aggrRows[0][0]) : 0;
-                const syncStartTime = isDigital ? rawStartTime : Math.max(rawStartTime, aggrStartTime); 
-
-                const allTimes = new Set([...rawRowsList.map(r => r[0]), ...(isDigital ? [] : aggrRows.map(r => r[0]))]);
-                const xLabels = Array.from(allTimes)
-                    .sort((a, b) => timeToSec(a) - timeToSec(b))
-                    .filter(t => timeToSec(t) >= syncStartTime);
-
-                const rawMap = new Map(rawRowsList.map(r => [r[0], r[1]]));
-                const aggrMap = new Map(aggrRows.map(r => [r[0], r[1]]));
-
-                const alignedRawData = xLabels.map(time => rawMap.has(time) ? rawMap.get(time) : null);
-                const alignedAggrData = isDigital ? [] : xLabels.map(time => aggrMap.has(time) ? aggrMap.get(time) : null);
-
-                chartObj.data.labels = xLabels;
-                chartObj.data.datasets[0].data = alignedRawData;
-                chartObj.data.datasets[3].data = data.threshold_high !== null ? xLabels.map(() => data.threshold_high) : [];
-                chartObj.data.datasets[4].data = data.threshold_low !== null ? xLabels.map(() => data.threshold_low) : [];
-                
-                if (isDigital) {
-                    chartObj.data.datasets[1].data = [];
-                    chartObj.data.datasets[2].data = [];
-                } else {
-                    chartObj.data.datasets[2].data = alignedAggrData;
-                    const rawValidCount = alignedRawData.filter(v => v !== null && v !== undefined).length;
-                    chartObj.data.datasets[1].data = rawValidCount >= 3 ? buildTrendLine(alignedRawData) : [];
-                }
-        
-                if (rawRowsList.length > 0) valDisplay.innerText = `${rawRowsList[rawRowsList.length - 1][1]} ${sUnit}`;
-                else if (aggrRows.length > 0) valDisplay.innerText = `${aggrRows[aggrRows.length - 1][1]} ${sUnit}`;
-                else valDisplay.innerText = `-- ${sUnit}`;
-        
-                const actContainer = document.getElementById(`act-container-${sensorName}`);
-                if (actContainer) {
-                    let actHTML = '';
-                    const linkedActs = data.actuators || [];
-        
-                    if (linkedActs.length > 0) {
-                        linkedActs.forEach(act => {
-                            const isLatched = act.latched || (act.val && act.val.includes('래치됨'));
-                            const isCounterTriggered = (act.control_type === 'virtual_counter' && act.val && !act.val.includes('0회'));
-                            const showResetBtn = isLatched || isCounterTriggered;
-                            const resetBtn = showResetBtn ? `<button class="btn-reset" onclick="socket.emit('reset_virtual', {id: ${act.id}})">초기화</button>` : "";
-
-                            if (act.is_virtual) {
-                                const vClass = act.active ? 'act-virtual-on' : 'act-virtual-off';
-                                actHTML += `<div class="act-box ${vClass}">💡 ${act.name}: ${act.val}${resetBtn}</div>`;
-                            } else {
-                                const actClass = act.active ? 'act-on' : 'act-off';
-                                const outVal = act.pwm_val !== undefined ? act.pwm_val : (act.active ? 'ON' : 'OFF');
-                                
-                                let actText = act.active ? `⚡ 작동중 (출력: ${outVal})` : `💤 대기중`;
-                                if (isLatched) actText = `🧲 래치됨 (출력: ${outVal})`;
-
-                                actHTML += `<div class="act-box ${actClass}">⚙️ ${act.name}: ${actText}${resetBtn}</div>`;
-                            }
-                        });
-                    } else {
-                        actHTML = `<div class="act-box act-off" style="opacity: 0.5;">연동된 출력 장치 없음</div>`;
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            // Fixed relative ticks: -60s, -45s, -30s, -15s, now
+                            afterBuildTicks: axis => {
+                                const end = axis.max;
+                                axis.ticks = [60, 45, 30, 15, 0].map(s => ({ value: end - s * 1000 }));
+                            },
+                            ticks: {
+                                maxRotation: 0,
+                                autoSkip: true,
+                                callback: function (v) {
+                                    const s = Math.round((this.max - v) / 1000);
+                                    return s === 0 ? '지금' : `-${s}s`;
+                                }
+                            },
+                            grid: { drawTicks: false }
+                        },
+                        y: {
+                            min: isDigital ? -0.1 : undefined,
+                            max: isDigital ? 1.1 : undefined,
+                            ticks: {
+                                maxTicksLimit: 4,
+                                callback: v => isDigital ? (v === 0 || v === 1 ? v : '') : fmt(v)
+                            },
+                            grace: '5%'
+                        }
                     }
-                    actContainer.innerHTML = actHTML;
                 }
-        
-                chartObj.update('none');
             });
-        
-            const mainBadge = document.getElementById('aiStatus');
-            if (anyAnomaly) {
-                document.body.classList.add('alert-bg');
-                mainBadge.className = 'status-badge status-alert';
-                mainBadge.innerText = '⚠️ 시스템 이상 발생!';
-            } else {
-                document.body.classList.remove('alert-bg');
-                mainBadge.className = 'status-badge status-safe';
-                mainBadge.innerText = '✅ 상태: 정상';
+        }
+
+        function styleChart(card) {
+            const c = card.chart;
+            if (!c) return;
+            const series = cssVar('--series-1');
+            const ink3 = cssVar('--ink-3');
+            const grid = cssVar('--grid');
+            const alert = card.el.classList.contains('alert');
+            c.data.datasets[0].borderColor = cssVar('--raw-line');
+            c.data.datasets[1].borderColor = series;
+            c.data.datasets[1].backgroundColor = cssVar('--series-1-wash');
+            c.data.datasets[2].borderColor = alert ? cssVar('--critical') : ink3;
+            c.data.datasets[3].borderColor = alert ? cssVar('--critical') : ink3;
+            for (const axis of ['x', 'y']) {
+                c.options.scales[axis].grid.color = grid;
+                c.options.scales[axis].border = { color: cssVar('--axis') };
+                c.options.scales[axis].ticks.color = ink3;
+                c.options.scales[axis].ticks.font = { size: 10 };
             }
+            c.options.plugins.tooltip.backgroundColor = cssVar('--surface-2');
+            c.options.plugins.tooltip.titleColor = cssVar('--ink-1');
+            c.options.plugins.tooltip.bodyColor = cssVar('--ink-2');
+            c.options.plugins.tooltip.borderColor = cssVar('--border');
+            c.options.plugins.tooltip.borderWidth = 1;
+        }
+
+        /* ---------- data intake ---------- */
+        function applyMeta(card, meta) {
+            card.meta = meta;
+            const el = card.el;
+            const proto = PROTOCOL_LABEL[meta.protocol] || meta.protocol || '';
+            el.querySelector('.meta').textContent = [meta.data_type, proto].filter(Boolean).join(' · ');
+            el.querySelector('.unit').textContent = meta.unit || '';
+
+            const chip = el.querySelector('.chip');
+            const alert = !!meta.alert;
+            el.classList.toggle('alert', alert);
+            chip.className = 'chip ' + (alert ? 'alert' : 'ok');
+            let text = '정상';
+            if (alert) {
+                const dir = meta.direction === 'HIGH' ? '높음' : meta.direction === 'LOW' ? '낮음' : '';
+                text = dir ? `이상 · ${dir}` : '이상';
+            }
+            el.querySelector('.chip-text').textContent = text;
+
+            const score = meta.score;
+            el.querySelector('.s-score').textContent =
+                card.isDigital ? '규칙' : (typeof score === 'number' && score !== 0 ? score.toFixed(2) : '--');
+
+            const hasThr = !card.isDigital && (meta.threshold_high !== null && meta.threshold_high !== undefined
+                || meta.threshold_low !== null && meta.threshold_low !== undefined);
+            const key = el.querySelector('.thr-key');
+            if (key) key.hidden = !hasThr;
+
+            renderActuators(card, meta.actuators || []);
+            styleChart(card);
+            card.dirty = true;
+        }
+
+        function renderActuators(card, acts) {
+            const box = card.el.querySelector('.acts');
+            if (!acts.length) {
+                box.innerHTML = '<span class="act"><span class="dot"></span>연동된 출력 없음</span>';
+                return;
+            }
+            box.innerHTML = acts.map(act => {
+                const latched = act.latched || (act.val && String(act.val).includes('래치됨'));
+                const counter = act.control_type === 'virtual_counter' && act.val && !String(act.val).includes(' 0회');
+                const reset = (latched || counter)
+                    ? `<button onclick="socket.emit('reset_virtual', {id: ${Number(act.id)}})">초기화</button>` : '';
+                if (act.is_virtual) {
+                    const cls = act.active ? 'act von' : 'act';
+                    return `<span class="${cls}"><span class="dot"></span>${escapeHtml(act.name)} · ${escapeHtml(act.val || '')}${reset}</span>`;
+                }
+                const cls = act.active ? 'act on' : 'act';
+                let state = act.active ? `작동 ${act.pwm_val !== undefined ? act.pwm_val : 'ON'}` : '대기';
+                if (latched) state = `래치 ${act.pwm_val !== undefined ? act.pwm_val : ''}`;
+                return `<span class="${cls}"><span class="dot"></span>${escapeHtml(act.name)} · ${state}${reset}</span>`;
+            }).join('');
+        }
+
+        function pushPoints(card, pts) {
+            for (const p of pts) card.points.push(p);
+            // Drop points older than the window (relative to the newest sample)
+            const newest = card.points.length ? card.points[card.points.length - 1][0] : 0;
+            let cut = 0;
+            while (cut < card.points.length && newest - card.points[cut][0] > WINDOW_MS) cut++;
+            if (cut) card.points.splice(0, cut);
+            card.dirty = true;
+        }
+
+        socket.on('dashboard_snapshot', function (snap) {
+            const sensors = (snap && snap.sensors) || {};
+            Object.keys(sensors).forEach(name => {
+                const entry = sensors[name];
+                const card = ensureCard(name, entry);
+                card.points = [];
+                pushPoints(card, entry.points || []);
+                applyMeta(card, entry);
+            });
+            refreshSummary();
         });
+
+        socket.on('update_dashboard_multi', function (payload) {
+            lastRx = Date.now();
+            const health = payload['__sys_health__'];
+            if (health) {
+                lastServerTs = health.ts || lastServerTs;
+                updateHealth(health);
+            }
+            Object.keys(payload).forEach(name => {
+                if (name === '__sys_health__') return;
+                const data = payload[name];
+                const card = ensureCard(name, data);
+                if (data.point) pushPoints(card, [data.point]);
+                applyMeta(card, data);
+            });
+            refreshSummary();
+        });
+
+        function setMeter(id, pct) {
+            const m = document.getElementById(id);
+            m.firstElementChild.style.width = Math.max(0, Math.min(100, pct)) + '%';
+            m.className = 'meter' + (pct >= 90 ? ' crit' : pct >= 70 ? ' warn' : '');
+        }
+
+        function updateHealth(h) {
+            document.getElementById('cpuVal').innerHTML = `${fmt(h.cpu)}<small>%</small>`;
+            document.getElementById('ramVal').innerHTML = `${fmt(h.ram)}<small>%</small>`;
+            setMeter('cpuMeter', h.cpu);
+            setMeter('ramMeter', h.ram);
+            if (h.hz !== undefined) {
+                document.getElementById('kpiRate').innerHTML =
+                    `${Number(h.hz).toFixed(1)}<small>Hz · ${Math.round(h.cycle_ms || 0)}ms</small>`;
+            }
+        }
+
+        function refreshSummary() {
+            const list = Object.values(cards);
+            const alerts = list.filter(c => c.meta && c.meta.alert).length;
+            let actsOn = 0, actsAll = 0;
+            list.forEach(c => (c.meta.actuators || []).forEach(a => { actsAll++; if (a.active) actsOn++; }));
+
+            document.getElementById('kpiSensors').textContent = list.length;
+            document.getElementById('kpiAlerts').textContent = alerts;
+            document.getElementById('kpiAlertBox').classList.toggle('alert', alerts > 0);
+            document.getElementById('kpiActs').innerHTML = `${actsOn}<small>/ ${actsAll}</small>`;
+
+            const main = document.getElementById('aiStatus');
+            main.className = 'chip ' + (alerts ? 'alert' : 'ok');
+            main.lastElementChild.textContent = alerts ? `이상 ${alerts}건 감지` : '시스템 정상';
+        }
+
+        /* ---------- render loop (one chart update per frame at most) ---------- */
+        function renderFrame() {
+            for (const card of Object.values(cards)) {
+                if (!card.dirty) continue;
+                card.dirty = false;
+                const pts = card.points;
+                const c = card.chart;
+                const raw = new Array(pts.length);
+                const avg = new Array(pts.length);
+                let min = Infinity, max = -Infinity, sum = 0;
+                for (let i = 0; i < pts.length; i++) {
+                    const p = pts[i];
+                    raw[i] = { x: p[0], y: p[1] };
+                    avg[i] = { x: p[0], y: card.isDigital ? p[1] : p[2] };
+                    if (p[1] < min) min = p[1];
+                    if (p[1] > max) max = p[1];
+                    sum += p[1];
+                }
+                c.data.datasets[0].data = raw;
+                c.data.datasets[1].data = avg;
+
+                const end = pts.length ? pts[pts.length - 1][0] : Date.now();
+                const start = end - WINDOW_MS;
+                c.options.scales.x.min = start;
+                c.options.scales.x.max = end;
+
+                const m = card.meta || {};
+                const hi = m.threshold_high, lo = m.threshold_low;
+                c.data.datasets[2].data = (!card.isDigital && hi !== null && hi !== undefined) ? [{ x: start, y: hi }, { x: end, y: hi }] : [];
+                c.data.datasets[3].data = (!card.isDigital && lo !== null && lo !== undefined) ? [{ x: start, y: lo }, { x: end, y: lo }] : [];
+                c.update('none');
+
+                const el = card.el;
+                const latest = pts.length ? pts[pts.length - 1][1] : null;
+                el.querySelector('.readout .value').textContent =
+                    card.isDigital && latest !== null ? (latest >= 1 ? 'HIGH' : 'LOW') : fmt(latest);
+                el.querySelector('.s-min').textContent = pts.length ? fmt(min) : '--';
+                el.querySelector('.s-max').textContent = pts.length ? fmt(max) : '--';
+                el.querySelector('.s-avg').textContent = pts.length ? fmt(sum / pts.length) : '--';
+            }
+            requestAnimationFrame(renderFrame);
+        }
+        requestAnimationFrame(renderFrame);
+
+        /* ---------- connection state ---------- */
+        function updateConnChip() {
+            const chip = document.getElementById('connChip');
+            const text = chip.lastElementChild;
+            if (!socket.connected) {
+                chip.className = 'chip alert';
+                text.textContent = '연결 끊김';
+            } else if (!lastRx || Date.now() - lastRx > STALE_MS) {
+                chip.className = 'chip stale';
+                text.textContent = lastRx ? `수신 지연 ${Math.round((Date.now() - lastRx) / 1000)}초` : '데이터 대기';
+            } else {
+                chip.className = 'chip ok';
+                text.textContent = '실시간';
+            }
+        }
+        setInterval(updateConnChip, 500);
+
+        socket.on('connect', () => {
+            socket.emit('client_ready', { status: 'connected' });
+            socket.emit('request_i2c_profiles', {});
+            socket.emit('request_snapshot', {});
+            updateConnChip();
+        });
+        socket.on('disconnect', updateConnChip);
+
+        /* ---------- fit all cards into the viewport ---------- */
+        let layoutPending = false;
+        function requestLayout() {
+            if (layoutPending) return;
+            layoutPending = true;
+            requestAnimationFrame(() => { layoutPending = false; layoutGrid(); });
+        }
+
+        function layoutGrid() {
+            const grid = document.getElementById('sensorGrid');
+            const n = Object.keys(cards).length;
+            if (!n || window.innerWidth <= 768 || !grid.offsetParent) {
+                grid.style.gridTemplateColumns = '';
+                grid.style.gridTemplateRows = '';
+                return;
+            }
+            const gap = 12;
+            const W = grid.clientWidth;
+            const H = grid.clientHeight;
+            const MIN_W = 260, MIN_H = 170, IDEAL_RATIO = 1.7;
+            let best = null;
+            for (let cols = 1; cols <= n; cols++) {
+                const rows = Math.ceil(n / cols);
+                const w = (W - gap * (cols - 1)) / cols;
+                const h = (H - gap * (rows - 1)) / rows;
+                if (w < MIN_W || h < MIN_H) continue;
+                // Prefer the layout whose cards are largest at a comfortable aspect ratio
+                const score = Math.min(w / IDEAL_RATIO, h);
+                if (!best || score > best.score) best = { cols, rows, score };
+            }
+            if (best) {
+                grid.style.gridTemplateColumns = `repeat(${best.cols}, minmax(0, 1fr))`;
+                grid.style.gridTemplateRows = `repeat(${best.rows}, minmax(0, 1fr))`;
+            } else {
+                // Too many sensors for one screen: keep minimum size and scroll inside the grid
+                const cols = Math.max(1, Math.floor((W + gap) / (MIN_W + gap)));
+                grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+                grid.style.gridTemplateRows = `repeat(${Math.ceil(n / cols)}, ${MIN_H}px)`;
+            }
+        }
+        window.addEventListener('resize', requestLayout);
+
+        function removeStaleCards(activeNames) {
+            Object.keys(cards).forEach(name => {
+                if (!activeNames.includes(name)) {
+                    cards[name].chart.destroy();
+                    cards[name].el.remove();
+                    delete cards[name];
+                }
+            });
+            document.getElementById('emptyState').hidden = Object.keys(cards).length > 0;
+            refreshSummary();
+            requestLayout();
+        }
 
         const actPinMap = {
             'digital_out': [
@@ -686,7 +1031,7 @@
                         <input type="text" class="dynamic-input" id="v-url" placeholder="웹훅 URL 입력">
                     `;
                 } else {
-                    vParams.innerHTML = '<span style="color:#6f42c1; font-size:0.9em; font-weight:bold;">✨ 이 가상 장치는 추가 설정 없이 바로 동작합니다.</span>';
+                    vParams.innerHTML = '<span class="ink-virtual" style="font-size:0.9em; font-weight:bold;">✨ 이 가상 장치는 추가 설정 없이 바로 동작합니다.</span>';
                 }
             } else {
                 physConfig.style.display = 'block';
@@ -885,14 +1230,7 @@
             const actuators = payload.actuators || [];
             
             const activeSensorNames = sensors.map(s => s.name);
-            Object.keys(charts).forEach(sensorName => {
-                if (!activeSensorNames.includes(sensorName)) {
-                    charts[sensorName].destroy();
-                    delete charts[sensorName];
-                    const panel = document.getElementById(`panel-${sensorName}`);
-                    if (panel) panel.remove();
-                }
-            });
+            removeStaleCards(activeSensorNames);
 
             /* sensor table */
             let senTableHTML = "<tr><th>ID</th><th>이름</th><th>종류 / 단위</th><th>연결 (핀)</th><th>작동 규칙 및 AI 설정</th><th>관리</th></tr>";
@@ -920,23 +1258,23 @@
                 if (isDigital) {
                     const trigger = (sen.threshold_high !== null && sen.threshold_high !== undefined) ? sen.threshold_high : 1;
                     threshHTML = trigger === 1 
-                        ? `<span style="background:#ffe6e6; color:#dc3545; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold;">Trigger: HIGH(1)</span>` 
-                        : `<span style="background:#e6f0ff; color:#007bff; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold;">Trigger: LOW(0)</span>`;
+                        ? `<span class="tag tag-crit">Trigger: HIGH(1)</span>` 
+                        : `<span class="tag tag-accent">Trigger: LOW(0)</span>`;
                 } else {
                     const tLow = (sen.threshold_low !== null && sen.threshold_low !== undefined) ? sen.threshold_low : '-';
                     const tHigh = (sen.threshold_high !== null && sen.threshold_high !== undefined) ? sen.threshold_high : '-';
-                    threshHTML = `<span style="color:#555; font-size:0.9em;">수동범위: <b>${tLow} ~ ${tHigh}</b></span>`;
+                    threshHTML = `<span class="ink-2" style="font-size:0.9em;">수동범위: <b>${tLow} ~ ${tHigh}</b></span>`;
                 }
 
                 const mult = sen.multiplier !== undefined ? sen.multiplier : 1.0;
                 const off = sen.offset !== undefined ? sen.offset : 0.0;
                 const calibHTML = (!isDigital && (mult !== 1.0 || off !== 0.0))
-                    ? `<span style="background:#f1f3f5; color:#666; padding:2px 6px; border-radius:4px; font-size:0.85em; margin-left:5px;">보정: y = ${mult}x + ${off}</span>`
+                    ? `<span class="tag">보정: y = ${mult}x + ${off}</span>`
                     : '';
 
                 const sliderHTML = isDigital 
-                    ? `<span style="color:#999; font-size:0.85em; margin-left:5px;">[Rule-Base]</span>` 
-                    : `<span style="margin-left:8px; font-size:0.85em; color:#28a745;">AI 민감도: 
+                    ? `<span class="ink-3" style="font-size:0.85em; margin-left:5px;">[Rule-Base]</span>` 
+                    : `<span class="ink-good" style="margin-left:8px; font-size:0.85em;">AI 민감도: 
                         <input type="range" min="0.01" max="0.30" step="0.01" value="${sensVal}" 
                                onchange="changeSensitivity(${sen.id}, this.value)" style="width:60px; vertical-align:middle; cursor:pointer;">
                         <b id="sens-val-${sen.id}">${sensPercent}%</b>
@@ -952,9 +1290,9 @@
 
                 senTableHTML += `<tr>
                     <td>${sen.id}</td>
-                    <td style="font-weight:bold; color:#333;">${sen.name}</td>
-                    <td>${sen.data_type || 'N/A'} <span style="color:#888; font-size:0.9em;">(${sen.unit || '-'})</span></td>
-                    <td style="font-family:monospace; font-size:0.95em; color:#495057;">${pinDisplay}</td>
+                    <td style="font-weight:bold;">${sen.name}</td>
+                    <td>${sen.data_type || 'N/A'} <span class="ink-3" style="font-size:0.9em;">(${sen.unit || '-'})</span></td>
+                    <td class="ink-2" style="font-family:ui-monospace,monospace; font-size:0.95em;">${pinDisplay}</td>
                     <td>${rulesAndAIColumn}</td> <td><button class="delete-btn" onclick="deleteDevice('sensor', ${sen.id})">❌ 삭제</button></td>
                 </tr>`;
                 
@@ -979,10 +1317,10 @@
                 let delayLatch = '';
 
                 if (act.control_type.startsWith('virtual_')) {
-                    pinTarget = '<span style="color:#6f42c1;">가상 (Virtual)</span>';
+                    pinTarget = '<span class="ink-virtual">가상 (Virtual)</span>';
                     if (act.control_type === 'virtual_timer') conditionOut = `지속 조건: <b>${extra.duration || 5}초</b>`;
                     else if (act.control_type === 'virtual_webhook') {
-                        pinTarget = `<span style="color:#17a2b8;">${(extra.messenger || 'Webhook').toUpperCase()}</span>`;
+                        pinTarget = `<span class="ink-accent">${(extra.messenger || 'Webhook').toUpperCase()}</span>`;
                         conditionOut = `URL: ${(extra.url || '').substring(0, 15)}...`;
                     } else {
                         conditionOut = '-';
@@ -1010,8 +1348,8 @@
                 actTableHTML += `<tr>
                     <td>${act.id}</td><td style="font-weight:bold;">${act.name}</td><td>${typeBadge}</td>
                     <td style="font-family:monospace;">${pinTarget}</td>
-                    <td style="font-size:0.9em; color:#444;">${conditionOut}</td>
-                    <td style="font-size:0.9em; color:#d63031; font-weight:bold;">${delayLatch}</td>
+                    <td class="ink-2" style="font-size:0.9em;">${conditionOut}</td>
+                    <td class="ink-warn" style="font-size:0.9em; font-weight:bold;">${delayLatch}</td>
                     <td>${linkedName}</td>
                     <td><button class="delete-btn" onclick="deleteDevice('actuator', ${act.id})">❌ 삭제</button></td>
                 </tr>`;
@@ -1031,10 +1369,14 @@
             
             document.querySelectorAll('.tab-btn').forEach(function(btn) {
                 btn.classList.remove('active');
+                btn.setAttribute('aria-selected', 'false');
             });
             
             document.getElementById(tabId).classList.add('active');
             event.currentTarget.classList.add('active');
+            event.currentTarget.setAttribute('aria-selected', 'true');
+            // Grid size depends on visibility
+            if (tabId === 'tab-dashboard') requestLayout();
         }
 
         function updateActuatorDirUI() {
@@ -1052,11 +1394,6 @@
         }
 
         let availableI2CProfiles = {};
-
-        socket.on('connect', () => {
-            socket.emit('client_ready', { status: "connected" });
-            socket.emit('request_i2c_profiles', {}); 
-        });
 
         socket.on('update_i2c_profiles', function(data) {
             availableI2CProfiles = data;

@@ -9,20 +9,25 @@ Purpose      : Manage WebUI and broadcast data to frontend
 from arduino.app_utils import *
 from arduino.app_bricks.web_ui import WebUI
 from sensors import load_sensor_profiles
+from logutil import dbg
 
 I2C_PROFILES = load_sensor_profiles()
 
 class WebServer:
     def __init__(self, db_manager):
         # init web server instance
-        print("[DEBUG] [WebServer] Initializing WebUI module...")
+        dbg("[DEBUG] [WebServer] Initializing WebUI module...")
         self.ui = WebUI()
         self.db = db_manager
         self.actuator_mem = None
+        # set by main: in-memory history and the latest per-sensor status
+        self.history = None
+        self.latest_meta = {}
 
         # register event handlers for incoming messages from frontend
         self.ui.on_message('client_ready', self.on_client_ready)
         self.ui.on_message('request_update', self.on_request_update)
+        self.ui.on_message('request_snapshot', self.on_request_snapshot)
         self.ui.on_message('request_device_list', self.on_request_device_list)
         self.ui.on_message('add_sensor_request', self.on_add_sensor)
         self.ui.on_message('add_actuator_request', self.on_add_actuator)
@@ -30,7 +35,7 @@ class WebServer:
         self.ui.on_message('change_sensitivity', self.on_change_sensitivity)
         self.ui.on_message('request_i2c_profiles', self.on_request_i2c_profiles)
         self.ui.on_message('reset_virtual', self.on_reset_virtual)
-        print("[DEBUG] [WebServer] WebUI successfully started. Listening on port 7000.")
+        dbg("[DEBUG] [WebServer] WebUI successfully started. Listening on port 7000.")
 
     def on_request_i2c_profiles(self, sid, data):
         profiles_data = {}
@@ -43,7 +48,7 @@ class WebServer:
         self.ui.send_message('update_i2c_profiles', profiles_data)
 
     def on_add_sensor(self, sid, data):
-        print(f"[DEBUG] [WebServer] Received Sensor Config: {data}")
+        dbg(f"[DEBUG] [WebServer] Received Sensor Config: {data}")
         self.db.add_sensor(
             data['name'], 
             data['protocol'], 
@@ -61,7 +66,7 @@ class WebServer:
         self.ui.send_message('device_list_updated', {'type': 'sensor'})
 
     def on_add_actuator(self, sid, data):
-        print(f"[DEBUG] [WebServer] Received Actuator Config: {data}")
+        dbg(f"[DEBUG] [WebServer] Received Actuator Config: {data}")
         self.db.add_actuator(
             data['name'], data['control_type'], data['pin'], 
             data['normal_val'], data['low_val'], data['high_val'], 
@@ -81,7 +86,7 @@ class WebServer:
 
     def broadcast_table(self, rows):
         # data transit to frontend
-        print(f"[DEBUG] [WebServer] Broadcasting {len(rows)} rows to frontend UI...")
+        dbg(f"[DEBUG] [WebServer] Broadcasting {len(rows)} rows to frontend UI...")
         self.ui.send_message('update_table', rows)
         
     def broadcast_multi_data(self, payload_dict):
@@ -90,10 +95,24 @@ class WebServer:
 
     def on_client_ready(self, sid, data):
         # sid(Session ID) for indicate
-        print(f"[DEBUG] [WebServer] EVENT: New web client connected! (SID: {sid})")
+        dbg(f"[DEBUG] [WebServer] EVENT: New web client connected! (SID: {sid})")
+        self.on_request_snapshot(sid, data)
         
+    def build_snapshot(self):
+        # Full chart history so a new or reconnected client can draw immediately
+        sensors = {}
+        if self.history is not None:
+            for name, meta in dict(self.latest_meta).items():
+                entry = dict(meta)
+                entry['points'] = self.history.points(name)
+                sensors[name] = entry
+        return {'sensors': sensors}
+
+    def on_request_snapshot(self, sid, data):
+        self.ui.send_message('dashboard_snapshot', self.build_snapshot())
+
     def on_request_update(self, sid, data):
-        print(f"[DEBUG] [WebServer] EVENT: Client manually requested an update. (SID: {sid})")
+        dbg(f"[DEBUG] [WebServer] EVENT: Client manually requested an update. (SID: {sid})")
 
     def on_request_device_list(self, sid, data):
         # request from DB, then send to frontend
@@ -111,7 +130,7 @@ class WebServer:
         device_type = data.get('type')
         device_id = data.get('id')
         
-        print(f"[DEBUG] [WebServer] EVENT: Delete Request -> Type: {device_type}, ID: {device_id}")
+        dbg(f"[DEBUG] [WebServer] EVENT: Delete Request -> Type: {device_type}, ID: {device_id}")
         
         if device_type == 'sensor':
             self.db.delete_sensor(device_id)
@@ -125,7 +144,7 @@ class WebServer:
         sensor_id = data.get('id')
         sensitivity = data.get('sensitivity', 0.1)
         
-        print(f"[DEBUG] [WebServer] EVENT: Change Sensitivity -> ID: {sensor_id}, Val: {sensitivity}")
+        dbg(f"[DEBUG] [WebServer] EVENT: Change Sensitivity -> ID: {sensor_id}, Val: {sensitivity}")
         self.db.update_sensor_sensitivity(sensor_id, sensitivity)
         
         # update
@@ -138,4 +157,4 @@ class WebServer:
             self.actuator_mem[act_id]['count'] = 0
             self.actuator_mem[act_id]['status_text'] = "✔️ 안전 (수동 초기화됨)"
             self.actuator_mem[act_id]['prev_active'] = False
-            print(f"[DEBUG] 장치(ID: {act_id}) 수동 초기화 완료.")
+            dbg(f"[DEBUG] 장치(ID: {act_id}) 수동 초기화 완료.")

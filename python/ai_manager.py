@@ -9,10 +9,11 @@ Purpose      : Machine Learning Anomaly Detection (Isolation Forest)
 import numpy as np
 from sklearn.ensemble import IsolationForest
 import time
+from logutil import dbg
 
 class AIManager:
     def __init__(self):
-        print("[DEBUG] [AIManager] Initialize Isolation Forest Model...")
+        dbg("[DEBUG] [AIManager] Initialize Isolation Forest Model...")
         # contamination: expected proportion of outliers (10%)
         self.models = {}
         self.sensitivities = {}
@@ -39,7 +40,7 @@ class AIManager:
 
         # check if model needs init or retraining
         if sensor_name not in self.models or self.sensitivities.get(sensor_name) != sensitivity:
-            print(f"[DEBUG] [AIManager] Re-building model for {sensor_name} with sensitivity {sensitivity}")
+            dbg(f"[DEBUG] [AIManager] Re-building model for {sensor_name} with sensitivity {sensitivity}")
             self.models[sensor_name] = IsolationForest(contamination=sensitivity, random_state=42)
             self.sensitivities[sensor_name] = sensitivity
             needs_training = True
@@ -75,6 +76,6 @@ class AIManager:
                 direction = "LOW"   # anomaly cause data decrease
                 
         if is_anomaly:
-            print(f"[DEBUG] [AIManager] ANOMALY! Sensor: {sensor_name}, Dir: {direction}, Score: {score:.3f}")
+            dbg(f"[DEBUG] [AIManager] ANOMALY! Sensor: {sensor_name}, Dir: {direction}, Score: {score:.3f}")
 
         return is_anomaly, direction, score

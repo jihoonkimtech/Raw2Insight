@@ -7,6 +7,7 @@ Purpose      : driver for AHT20
 ===================================================================
 """
 from sensors import BaseI2CSensor
+from logutil import dbg
 
 # Commands from the AHT20 datasheet
 CMD_SOFT_RESET = [0xBA]
@@ -41,6 +42,8 @@ class AHT20Sensor(BaseI2CSensor):
     # A measurement must be triggered before every read, conversion takes ~80ms
     trigger_sequence = [CMD_TRIGGER]
     trigger_delay = 0.1
+    # Temperature/humidity change slowly, sampling every 2s also limits self-heating
+    min_interval = 2.0
 
     def parse(self, data_bytes):
         if not data_bytes or len(data_bytes) < 7: return None
@@ -62,7 +65,7 @@ class AHT20Sensor(BaseI2CSensor):
         # bit parsing
         humidity_raw = ((data_bytes[1] << 12) | (data_bytes[2] << 4) | (data_bytes[3] >> 4))
         temp_raw = (((data_bytes[3] & 0x0F) << 16) | (data_bytes[4] << 8) | data_bytes[5])
-        print(f"[DEBUG] [AHT20 Driver] bit parsing done!")
+        dbg(f"[DEBUG] [AHT20 Driver] bit parsing done!")
 
         return {
             "Temperature": round((temp_raw / 1048576.0) * 200.0 - 50.0, 2),

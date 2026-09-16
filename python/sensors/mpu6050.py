@@ -8,6 +8,7 @@ Purpose      : driver for MPU6050 (6-axis accel + gyro)
 """
 import math
 from sensors import BaseI2CSensor
+from logutil import dbg
 
 # Register map
 REG_SMPLRT_DIV   = 0x19
@@ -69,7 +70,7 @@ class MPU6050Sensor(BaseI2CSensor):
         # Tilt from gravity vector (valid when not accelerating)
         roll = math.degrees(math.atan2(ay, az))
         pitch = math.degrees(math.atan2(-ax, math.sqrt(ay * ay + az * az)))
-        print(f"[DEBUG] [MPU6050 Driver] bit parsing done!")
+        dbg(f"[DEBUG] [MPU6050 Driver] bit parsing done!")
 
         return {
             "Accel_X": round(ax, 3),

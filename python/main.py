@@ -12,6 +12,7 @@ import json
 import urllib.request
 import threading # added for non-blocking webhook operations
 from arduino.app_utils import App
+from logutil import dbg
 
 # load custom modules
 from db_manager import DBManager
@@ -19,6 +20,7 @@ from comm_manager import CommManager
 from web_server import WebServer
 from ai_manager import AIManager
 from sensors import load_sensor_profiles
+from history import SensorHistory
 
 print("Raw2Insight System Starting...")
 
@@ -28,7 +30,7 @@ comm = CommManager()
 web = WebServer(db)
 ai = AIManager()
 I2C_PROFILES = load_sensor_profiles() 
-print(f"[DEBUG] [Main] Loaded I2C profiles: {list(I2C_PROFILES.keys())}")
+dbg(f"[DEBUG] [Main] Loaded I2C profiles: {list(I2C_PROFILES.keys())}")
 
 sensor_prev_states = {}
 sensor_prev_manual = {} # added for hysteresis tracking
@@ -50,6 +52,34 @@ driven_outputs = {}
 # cycle count for debug
 cycle_count = 0
 
+# Target loop period in seconds (5Hz)
+LOOP_PERIOD = 0.2
+# Isolation Forest is re-evaluated at most this often per sensor
+AI_EVAL_INTERVAL = 0.5
+
+# in-memory history shared with the web server
+history = SensorHistory()
+web.history = history
+
+# cached AI result per sensor: name -> (time, (is_anomaly, direction, score))
+ai_cache = {}
+
+# pending non-blocking I2C conversions: cache_key -> trigger time
+bus_trigger_time = {}
+
+# measured loop timing for the dashboard
+loop_stats = {'hz': 0.0, 'cycle_ms': 0.0, 'last': None}
+
+# rate-limited warnings: key -> last print time
+_warn_times = {}
+
+def warn_throttled(key, message, interval=10.0):
+    # Print a repeating warning at most once per interval
+    now = time.time()
+    if now - _warn_times.get(key, 0) >= interval:
+        _warn_times[key] = now
+        print(message)
+
 def to_int(value, default=0):
     # DB rows may carry numbers as strings or None
     try:
@@ -62,7 +92,7 @@ def release_stale_outputs(current_outputs, actuators):
     for pin, info in list(driven_outputs.items()):
         if pin in current_outputs:
             continue
-        print(f"[DEBUG] [Main] Releasing stale output pin {pin} -> {info['safe_val']}")
+        dbg(f"[DEBUG] [Main] Releasing stale output pin {pin} -> {info['safe_val']}")
         comm.set_actuator_dynamic(info['type'], pin, info['safe_val'])
         driven_outputs.pop(pin, None)
     driven_outputs.update(current_outputs)
@@ -103,19 +133,15 @@ def ensure_i2c_init(addr, profile):
         if profile.init_delay > 0:
             time.sleep(profile.init_delay)
     i2c_initialized[addr] = profile.profile_name
-    print(f"[DEBUG] [Main] I2C init done for {addr} ({profile.profile_name})")
+    dbg(f"[DEBUG] [Main] I2C init done for {addr} ({profile.profile_name})")
     return True
 
 def trigger_i2c_measurement(addr, profile):
-    # Send the per-read trigger command and wait for the conversion to finish
-    if not profile.trigger_sequence:
-        return True
+    # Send the per-read trigger command, the caller reads after trigger_delay (non-blocking)
     for cmd in profile.trigger_sequence:
         if not comm.write_i2c_bytes(addr, cmd):
-            print(f"[WARN] [Main] I2C trigger failed for {addr} ({profile.profile_name})")
+            warn_throttled(f"trig:{addr}", f"[WARN] [Main] I2C trigger failed for {addr} ({profile.profile_name})")
             return False
-    if profile.trigger_delay > 0:
-        time.sleep(profile.trigger_delay)
     return True
 
 def read_bus_sensor(protocol, pin, profile, cache_key):
@@ -123,22 +149,38 @@ def read_bus_sensor(protocol, pin, profile, cache_key):
     last_good = bus_last_known_good.get(cache_key, {})
     now = time.time()
 
-    # Respect the minimum conversion interval of slow sensors
-    if last_good and (now - bus_last_read_time.get(cache_key, 0)) < profile.min_interval:
+    # Conversion in progress: come back on a later cycle instead of sleeping
+    pending = bus_trigger_time.get(cache_key)
+    if pending is not None and now - pending < profile.trigger_delay:
         return last_good
 
-    print(f"[DEBUG] [Main] Can't find cache of {cache_key} sensor. Read start")
-    bus_last_read_time[cache_key] = now
+    # Respect the minimum conversion interval of slow sensors
+    if pending is None and last_good and (now - bus_last_read_time.get(cache_key, 0)) < profile.min_interval:
+        return last_good
+
     parsed_data = None
 
     if protocol == 'i2c':
-        if ensure_i2c_init(pin, profile) and trigger_i2c_measurement(pin, profile):
-            raw_bytes = comm.read_sensor_dynamic('i2c', pin, read_bytes=profile.read_bytes, register=profile.read_register)
-            parsed_data = profile.parse(raw_bytes)
-            if not parsed_data:
-                # Force re-init next cycle in case the device was reset or re-plugged
-                i2c_initialized.pop(pin, None)
+        if pending is None:
+            if not ensure_i2c_init(pin, profile):
+                bus_last_read_time[cache_key] = now
+                return last_good
+            if profile.trigger_sequence:
+                if trigger_i2c_measurement(pin, profile):
+                    bus_trigger_time[cache_key] = now
+                else:
+                    bus_last_read_time[cache_key] = now
+                return last_good
+        bus_trigger_time.pop(cache_key, None)
+        bus_last_read_time[cache_key] = now
+        dbg(f"[DEBUG] [Main] Reading {cache_key}")
+        raw_bytes = comm.read_sensor_dynamic('i2c', pin, read_bytes=profile.read_bytes, register=profile.read_register)
+        parsed_data = profile.parse(raw_bytes)
+        if not parsed_data:
+            # Force re-init next cycle in case the device was reset or re-plugged
+            i2c_initialized.pop(pin, None)
     elif protocol == 'dht':
+        bus_last_read_time[cache_key] = now
         raw_bytes = comm.read_sensor_dynamic('dht', pin, read_bytes=profile.read_bytes, register=getattr(profile, 'start_low_ms', 20))
         parsed_data = profile.parse(raw_bytes)
 
@@ -148,24 +190,25 @@ def read_bus_sensor(protocol, pin, profile, cache_key):
         return parsed_data
 
     # physical read failed: use last known good value (fallback)
-    print(f"[WARN] [Main] {protocol.upper()} read failed for {pin}. Using fallback data.")
+    warn_throttled(f"read:{cache_key}", f"[WARN] [Main] {protocol.upper()} read failed for {pin}. Using fallback data.")
     return last_good
 
 def loop():
     global cycle_count
     cycle_count += 1
-    print(f"\n--- [Main] Cycle #{cycle_count} Start ---")
+    dbg(f"\n--- [Main] Cycle #{cycle_count} Start ---")
     
+    cycle_start = time.time()
     try:
-        # read sensors list
-        sensors = db.get_all_sensors()
-        actuators = db.get_all_actuators()
+        # read sensors list (cached until a device changes)
+        sensors, actuators = db.get_config_cached()
         
         if not sensors:
-            print("[DEBUG] [Main] 등록된 센서가 없습니다. 웹 대시보드에서 기기를 추가해주세요.")
+            dbg("[DEBUG] [Main] 등록된 센서가 없습니다. 웹 대시보드에서 기기를 추가해주세요.")
             # No sensor means no actuator is driven, release everything
             release_stale_outputs({}, actuators)
-            time.sleep(2)
+            history.prune(set())
+            time.sleep(1)
             return
             
         payload = {}
@@ -189,7 +232,7 @@ def loop():
             calibrated_value = None
 
             # read sensor data
-            print(f"[DEBUG] [Main] Sensing start ({s_protocol}, {s_pin})")
+            dbg(f"[DEBUG] [Main] Sensing start ({s_protocol}, {s_pin})")
             if s_protocol == 'analog':
                 raw_value = comm.read_sensor_dynamic(s_protocol, s_pin)
                 if raw_value is not None:
@@ -209,22 +252,26 @@ def loop():
                     parsed_dict = bus_cache[cache_key]
                     if parsed_dict and s_data_key in parsed_dict:
                         calibrated_value = parsed_dict[s_data_key]
-                    else:
-                        print(f"[ERROR] [Main] Can't find {s_data_key} KEY!")
+                    elif parsed_dict:
+                        warn_throttled(f"key:{s_name}", f"[ERROR] [Main] Can't find {s_data_key} KEY!")
 
                 elif s_protocol == 'i2c':
-                    print(f"[DEBUG] [Main] Call debug i2c function!")
+                    dbg(f"[DEBUG] [Main] Call debug i2c function!")
                     calibrated_value = comm.read_sensor_dynamic('i2c', s_pin)
                 else:
-                    print(f"[ERROR] [Main] No {s_protocol} driver named {s_profile}")
+                    warn_throttled(f"drv:{s_name}", f"[ERROR] [Main] No {s_protocol} driver named {s_profile}")
 
-            # store in DB (skip missing values so one failed sensor does not abort the cycle)
+            # seed AI history from DB once, so a restart keeps the learned baseline
+            if not history.is_seeded(s_name):
+                _, seed_values = db.get_aggregated_data(s_name, limit=300)
+                history.seed(s_name, seed_values)
+
+            # keep samples in memory, DB gets 1s averages after the loop
+            now = time.time()
+            smoothed = None
             if calibrated_value is not None:
-                db.insert_data(calibrated_value, s_name)
-
-            # load data (improved: fetch more for AI context, UI gets sliced later)
-            formatted_rows, values_only = db.get_aggregated_data(s_name, limit=300)
-            raw_rows = db.get_raw_data(s_name, limit=60)
+                smoothed = history.add(s_name, calibrated_value, now)
+            values_only = history.ai_values(s_name)
 
             # anomaly decision
             manual_intensity = 0.0
@@ -240,8 +287,13 @@ def loop():
                 direction = "HIGH" if trigger_val == 1 else "LOW"
                 score = -1.0 if is_anomaly else 1.0
             else:
-                # analog, i2c : do Isolation Forest
-                is_anomaly, direction, score = ai.detect(s_name, values_only, s_protocol, s_sens)
+                # analog, i2c : do Isolation Forest (throttled, the model input moves in 2s steps)
+                cached = ai_cache.get(s_name)
+                if cached and now - cached[0] < AI_EVAL_INTERVAL:
+                    is_anomaly, direction, score = cached[1]
+                else:
+                    is_anomaly, direction, score = ai.detect(s_name, values_only, s_protocol, s_sens)
+                    ai_cache[s_name] = (now, (is_anomaly, direction, score))
 
                 # rule-base decision with hysteresis logic applied
                 margin = 1.5 
@@ -251,7 +303,7 @@ def loop():
 
                 # Skip threshold checks when no value is available yet (e.g. first bus read failed)
                 if calibrated_value is None:
-                    print(f"[WARN] [Main] No value for {s_name}, threshold check skipped")
+                    dbg(f"[DEBUG] [Main] No value for {s_name}, threshold check skipped")
                 elif s_thresh_high is not None:
                     if calibrated_value > s_thresh_high:
                         sensor_prev_manual[s_name]["HIGH"] = True
@@ -432,9 +484,11 @@ def loop():
             
             # carrying in payload
             payload[s_name] = {
-                'rows': formatted_rows[:60],  # sliced to 60 for frontend performance
-                'raw_rows': raw_rows,         
+                # only the newest point, the client keeps its own history (see dashboard_snapshot)
+                'point': [int(now * 1000), round(float(calibrated_value), 3), round(float(smoothed), 3)] if calibrated_value is not None else None,
+                'value': round(float(calibrated_value), 3) if calibrated_value is not None else None,
                 'alert': is_anomaly,
+                'direction': direction,
                 'data_type': s_type,
                 'unit': s_unit,
                 'protocol': s_protocol,
@@ -448,7 +502,10 @@ def loop():
         try:
             payload['__sys_health__'] = {
                 'cpu': psutil.cpu_percent(interval=None),
-                'ram': psutil.virtual_memory().percent
+                'ram': psutil.virtual_memory().percent,
+                'hz': round(loop_stats['hz'], 1),
+                'cycle_ms': round(loop_stats['cycle_ms'], 1),
+                'ts': int(time.time() * 1000)
             }
         except Exception as e:
             print(f"[ERROR] [Main] Failed to get system health: {e}")
@@ -456,15 +513,34 @@ def loop():
         # turn off outputs of deleted or unlinked actuators
         release_stale_outputs(current_outputs, actuators)
 
+        # write 1s averages to InfluxDB and drop history of deleted sensors
+        for name, mean_val in history.pop_db_writes().items():
+            try:
+                db.insert_data(mean_val, name)
+            except Exception as e:
+                warn_throttled(f"db:{name}", f"[ERROR] [Main] DB write failed for {name}: {e}")
+        history.prune({s['name'] for s in sensors})
+        web.latest_meta = {k: {kk: vv for kk, vv in v.items() if kk not in ('point', 'value')} for k, v in payload.items() if k != '__sys_health__'}
+
         web.broadcast_multi_data(payload)
         
-        print(f"--- [Main] Cycle #{cycle_count} Completed ---")
+        dbg(f"--- [Main] Cycle #{cycle_count} Completed ---")
         
     except Exception as e:
         print(f"[ERROR] [Main] Error occur in main loop : {e}")
-        
-    time.sleep(1)
+
+    # pace the loop to LOOP_PERIOD and track the real rate
+    elapsed = time.time() - cycle_start
+    if elapsed < LOOP_PERIOD:
+        time.sleep(LOOP_PERIOD - elapsed)
+    end = time.time()
+    if loop_stats['last'] is not None:
+        period = end - loop_stats['last']
+        rate = 1.0 / period if period > 0 else 0.0
+        loop_stats['hz'] = rate if loop_stats['hz'] == 0 else 0.8 * loop_stats['hz'] + 0.2 * rate
+    loop_stats['last'] = end
+    loop_stats['cycle_ms'] = 0.8 * loop_stats['cycle_ms'] + 0.2 * (elapsed * 1000.0)
 
 # run application
-print("[DEBUG] [Main] Handing over execution to App.run()...")
+dbg("[DEBUG] [Main] Handing over execution to App.run()...")
 App.run(user_loop=loop)

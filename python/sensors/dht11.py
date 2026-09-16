@@ -7,6 +7,7 @@ Purpose      : driver for DHT11 (single-wire temperature/humidity)
 ===================================================================
 """
 from sensors import BaseDHTSensor
+from logutil import dbg
 
 
 class DHT11Sensor(BaseDHTSensor):
@@ -39,7 +40,7 @@ class DHT11Sensor(BaseDHTSensor):
         if humidity > 100 or not (-20 <= temperature <= 60):
             print(f"[WARN] [DHT11 Driver] out of range value")
             return None
-        print(f"[DEBUG] [DHT11 Driver] bit parsing done!")
+        dbg(f"[DEBUG] [DHT11 Driver] bit parsing done!")
 
         return {
             "Temperature": round(temperature, 1),

@@ -9,24 +9,31 @@ Purpose      : Manage InfluxDB database connection and queries
 import time
 from arduino.app_bricks.dbstorage_tsstore import TimeSeriesStore
 from arduino.app_bricks.dbstorage_sqlstore import SQLStore
+from logutil import dbg
 
 class DBManager:
     def __init__(self, db_name='sensor_data.db'):
         # init db connection for sensor value
-        print("[DEBUG] [DBManager] Connecting to InfluxDB TimeSeriesStore...")
+        dbg("[DEBUG] [DBManager] Connecting to InfluxDB TimeSeriesStore...")
         self.ts_store = TimeSeriesStore(host="dbstorage-influx", port=8086, retention_days=7)
         # setting data grouping name
         self.measurement_name = "arduino"
         self.field_name = "sensor_value"
 
         # init db connection for device config
-        print("[DEBUG] [DBManager] Connecting to SQLStore for Device Config...")
+        dbg("[DEBUG] [DBManager] Connecting to SQLStore for Device Config...")
         self.config_db = SQLStore("device_config.db")
         self.init_config_db()
 
+        # Bumped on every device change so the main loop can cache the config
+        self.config_version = 0
+        self._cache_version = -1
+        self._sensors_cache = []
+        self._actuators_cache = []
+
     def init_db(self):
         # table creation
-        print("[DEBUG] [DBManager] Checking and initializing 'sensor_logs' table...")
+        dbg("[DEBUG] [DBManager] Checking and initializing 'sensor_logs' table...")
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS sensor_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,7 +77,7 @@ class DBManager:
             "extra_params": "TEXT"     # for virtual
         }
         self.config_db.create_table("actuators", actuator_cols)
-        print("[DEBUG] [DBManager] Device Config Tables Checked/Initialized.")
+        dbg("[DEBUG] [DBManager] Device Config Tables Checked/Initialized.")
 
     # sensor management
     def add_sensor(self, name, protocol, pin, data_type="", unit="", 
@@ -93,7 +100,8 @@ class DBManager:
             data["data_key"] = data_key
             
         self.config_db.store("sensors", data)
-        print(f"[DEBUG] [DBManager] Sensor Added: {name} (Low: {threshold_low}, High: {threshold_high})(Mult: {multiplier}, Offset: {offset})")
+        self.mark_config_changed()
+        dbg(f"[DEBUG] [DBManager] Sensor Added: {name} (Low: {threshold_low}, High: {threshold_high})(Mult: {multiplier}, Offset: {offset})")
 
     # output device management
     def add_actuator(self, name, control_type, pin, normal_val, low_val, high_val, trigger_dir, linked_sensor_id, extra_params="{}"):
@@ -105,13 +113,25 @@ class DBManager:
             "extra_params": extra_params
         }
         self.config_db.store("actuators", data)
-        print(f"[DEBUG] [DBManager] Actuator Added: {name} (Pin {pin})")
+        self.mark_config_changed()
+        dbg(f"[DEBUG] [DBManager] Actuator Added: {name} (Pin {pin})")
 
     def get_all_sensors(self):
         return self.config_db.read("sensors")
 
     def get_all_actuators(self):
         return self.config_db.read("actuators")
+
+    def get_config_cached(self):
+        # Re-read SQL only after a device change
+        if self._cache_version != self.config_version:
+            self._sensors_cache = self.get_all_sensors() or []
+            self._actuators_cache = self.get_all_actuators() or []
+            self._cache_version = self.config_version
+        return self._sensors_cache, self._actuators_cache
+
+    def mark_config_changed(self):
+        self.config_version += 1
 
     def insert_data(self, value, sensor_name):
         # store date with timestamp
@@ -120,11 +140,11 @@ class DBManager:
             value=float(value), 
             measurement_name=self.measurement_name
         )
-        print(f"[DEBUG] [DBManager] Inserted [{sensor_name}] -> Value: {value}")
+        dbg(f"[DEBUG] [DBManager] Inserted [{sensor_name}] -> Value: {value}")
         return value
 
     def get_latest_data(self, limit=20):
-        print(f"[DEBUG] [DBManager] Fetching latest {limit} records from InfluxDB...")
+        dbg(f"[DEBUG] [DBManager] Fetching latest {limit} records from InfluxDB...")
         try:
             # load N latest data from DB (in 1 hour)
             samples = self.ts_store.read_samples(
@@ -146,7 +166,7 @@ class DBManager:
             return formatted_rows
             
         except Exception as e:
-            print(f"[DEBUG] [DBManager] Error reading timeseries samples: {e}")
+            dbg(f"[DEBUG] [DBManager] Error reading timeseries samples: {e}")
             return []
 
     def get_aggregated_data(self, sensor_name, limit=300):
@@ -183,13 +203,15 @@ class DBManager:
         # using parameterized query to prevent sql injection
         query = "DELETE FROM sensors WHERE id = ?"
         self.config_db.execute_sql(query, (sensor_id,))
-        print(f"[DEBUG] [DBManager] Sensor ID {sensor_id} Deleted.")
+        self.mark_config_changed()
+        dbg(f"[DEBUG] [DBManager] Sensor ID {sensor_id} Deleted.")
 
     def delete_actuator(self, actuator_id):
         # using parameterized query to prevent sql injection
         query = "DELETE FROM actuators WHERE id = ?"
         self.config_db.execute_sql(query, (actuator_id,))
-        print(f"[DEBUG] [DBManager] Actuator ID {actuator_id} Deleted.")
+        self.mark_config_changed()
+        dbg(f"[DEBUG] [DBManager] Actuator ID {actuator_id} Deleted.")
 
     def get_raw_data(self, sensor_name, limit=20):
         try:
@@ -226,8 +248,9 @@ class DBManager:
             # using parameterized query instead of vulnerable update method
             query = "UPDATE sensors SET sensitivity = ? WHERE id = ?"
             self.config_db.execute_sql(query, (sensitivity, sensor_id))
+            self.mark_config_changed()
             
-            print(f"[DEBUG] [DBManager] Sensor ID {sensor_id} sensitivity updated to {sensitivity}")
+            dbg(f"[DEBUG] [DBManager] Sensor ID {sensor_id} sensitivity updated to {sensitivity}")
             
         except Exception as e:
             print(f"[ERROR] [DBManager] Error updating sensitivity using SQLStore: {e}")
