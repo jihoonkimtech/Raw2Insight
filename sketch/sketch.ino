@@ -275,7 +275,12 @@ String read_dht_bytes(int pin_num, int start_low_ms) {
   }
   if (start_low_ms < 1 || start_low_ms > 30) start_low_ms = 20;
 
-  // Idle line must be high (pull-up present)
+  // With the internal pull-down, a HIGH level proves an external pull-up (module powered and wired)
+  pinMode(pin_num, INPUT_PULLDOWN);
+  delay(2);
+  int ext_pullup = digitalRead(pin_num);
+
+  // Idle line must be high
   pinMode(pin_num, INPUT_PULLUP);
   delay(2);
   if (digitalRead(pin_num) == LOW) {
@@ -295,10 +300,10 @@ String read_dht_bytes(int pin_num, int start_low_ms) {
     return "";
   }
 
-  // Lock first so no thread can delay listening after the release (~5ms total)
+  // Release before locking: pin reconfiguration does not take effect inside irq_lock on this core
   uint32_t timeout = dht_loops_per_ms * 2;
-  noInterrupts();
   pinMode(pin_num, INPUT_PULLUP);
+  noInterrupts();
   int n = dht_capture(pin_num, timeout);
   interrupts();
 
@@ -309,10 +314,11 @@ String read_dht_bytes(int pin_num, int start_low_ms) {
   }
   int first = end_low - 80;
   if (end_low < 0 || first < 0 || dht_seg_level[first] != LOW) {
-    // 1 segment: sensor silent, 2..82 segments: listening started late or line noise
+    // H0 only: sensor silent, L0 only: line held low, 2..82 segments: late start or noise
     Serial.print("[MCU] [ERROR] DHT incomplete frame, pinMode took ");
     Serial.print(cfg_us);
-    Serial.println(" us");
+    Serial.print(" us, external pull-up: ");
+    Serial.println(ext_pullup ? "detected" : "NOT detected (module unpowered/unwired or bare sensor)");
     dht_dump_segments(n);
     return "";
   }
