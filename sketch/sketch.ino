@@ -210,18 +210,26 @@ static uint32_t dht_expect_pulse(int pin_num, int level, uint32_t max_count) {
 static uint32_t dht_loops_per_ms = 0;
 
 static void dht_calibrate() {
+  // Time a fixed number of the same loop body used by dht_expect_pulse (no timer call inside)
+  const uint32_t probe_loops = 200000;
   pinMode(2, INPUT);
-  uint32_t loops = 0;
-  unsigned long start = millis();
-  while (millis() - start < 20) {
-    (void) digitalRead(2);
-    loops++;
+  unsigned long start = micros();
+  uint32_t count = 0;
+  while (count < probe_loops) {
+    if (digitalRead(2) == 2) break;
+    count++;
   }
-  dht_loops_per_ms = loops / 20;
-  if (dht_loops_per_ms < 100) dht_loops_per_ms = 100;
+  unsigned long elapsed_us = micros() - start;
+  if (elapsed_us == 0) elapsed_us = 1;
+
+  uint64_t per_ms = ((uint64_t) count * 1000ULL) / elapsed_us;
+  dht_loops_per_ms = (per_ms < 1000) ? 1000 : (uint32_t) per_ms;
+
   Serial.print("[MCU] DHT loop calibration: ");
   Serial.print(dht_loops_per_ms);
-  Serial.println(" loops/ms");
+  Serial.print(" loops/ms (");
+  Serial.print(elapsed_us);
+  Serial.println(" us)");
 }
 
 // Read 40 bits from a DHT sensor and return "b0,b1,b2,b3,b4" (empty string on failure)
@@ -233,14 +241,19 @@ String read_dht_bytes(int pin_num, int start_low_ms) {
   }
   if (start_low_ms < 1 || start_low_ms > 30) start_low_ms = 20;
 
-  // Pulse width is judged by comparing loop counts, so no microsecond timer is needed
-  uint32_t timeout = dht_loops_per_ms;
+  // Pulse width is judged by comparing loop counts, timeout is about 2ms of looping
+  uint32_t timeout = dht_loops_per_ms * 2;
   uint32_t cycles[80];
   uint8_t data[5] = {0, 0, 0, 0, 0};
 
   // Idle high, then host start signal
   pinMode(pin_num, INPUT_PULLUP);
   delay(2);
+  if (digitalRead(pin_num) == LOW) {
+    // Line stuck low: wiring, missing pull-up or sensor not powered
+    Serial.println("[MCU] [ERROR] DHT line is LOW while idle (check VCC/pull-up)");
+    return "";
+  }
   pinMode(pin_num, OUTPUT);
   digitalWrite(pin_num, LOW);
   delay(start_low_ms);
@@ -252,11 +265,12 @@ String read_dht_bytes(int pin_num, int start_low_ms) {
   noInterrupts();
 
   bool ok = true;
+  int fail_stage = 0;
   // Wait for the sensor to pull the line low (20-40us after release)
   (void) dht_expect_pulse(pin_num, HIGH, timeout);
   // Sensor response: 80us low + 80us high
-  if (dht_expect_pulse(pin_num, LOW, timeout) == 0) ok = false;
-  if (ok && dht_expect_pulse(pin_num, HIGH, timeout) == 0) ok = false;
+  if (dht_expect_pulse(pin_num, LOW, timeout) == 0) { ok = false; fail_stage = 1; }
+  if (ok && dht_expect_pulse(pin_num, HIGH, timeout) == 0) { ok = false; fail_stage = 2; }
 
   // Each bit: 50us low followed by 26-28us (0) or 70us (1) high
   for (int i = 0; ok && i < 80; i += 2) {
@@ -266,7 +280,11 @@ String read_dht_bytes(int pin_num, int start_low_ms) {
   interrupts();
 
   if (!ok) {
-    Serial.println("[MCU] [ERROR] DHT no response");
+    // Stage 1: no response low pulse, stage 2: response high pulse missing
+    Serial.print("[MCU] [ERROR] DHT no response, stage ");
+    Serial.print(fail_stage);
+    Serial.print(", timeout loops ");
+    Serial.println(timeout);
     return "";
   }
 
