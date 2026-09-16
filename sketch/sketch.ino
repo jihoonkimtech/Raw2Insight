@@ -197,20 +197,11 @@ int write_i2c_bytes(String addr_str, String csv_bytes) {
   return (result == 0 && written > 0) ? 1 : 0;
 }
 
-// Count loop iterations while the line stays at level, 0 on timeout
-static uint32_t dht_expect_pulse(int pin_num, int level, uint32_t max_count) {
-  uint32_t count = 0;
-  while (digitalRead(pin_num) == level) {
-    if (count++ >= max_count) return 0;
-  }
-  return count;
-}
-
 // Iterations of a digitalRead loop per millisecond, measured once at boot
 static uint32_t dht_loops_per_ms = 0;
 
 static void dht_calibrate() {
-  // Time a fixed number of the same loop body used by dht_expect_pulse (no timer call inside)
+  // Time a fixed number of the same loop body used by dht_capture (no timer call inside)
   const uint32_t probe_loops = 200000;
   pinMode(2, INPUT);
   unsigned long start = micros();
@@ -232,6 +223,49 @@ static void dht_calibrate() {
   Serial.println(" us)");
 }
 
+// Captured line segments: level and loop count for each run of equal level
+#define DHT_MAX_SEGMENTS 100
+static uint8_t dht_seg_level[DHT_MAX_SEGMENTS];
+static uint32_t dht_seg_count[DHT_MAX_SEGMENTS];
+
+// Record level runs until the line stays unchanged for timeout loops, returns segment count
+static int dht_capture(int pin_num, uint32_t timeout) {
+  int n = 0;
+  int level = digitalRead(pin_num);
+  uint32_t count = 0;
+  while (n < DHT_MAX_SEGMENTS) {
+    int now = digitalRead(pin_num);
+    if (now == level) {
+      if (++count >= timeout) {
+        // Idle segment, mark with count 0 and stop
+        dht_seg_level[n] = level;
+        dht_seg_count[n] = 0;
+        return n + 1;
+      }
+      continue;
+    }
+    dht_seg_level[n] = level;
+    dht_seg_count[n] = count;
+    n++;
+    level = now;
+    count = 1;
+  }
+  return n;
+}
+
+// Print the first segments for field debugging
+static void dht_dump_segments(int n) {
+  Serial.print("[MCU] DHT capture segments: ");
+  Serial.print(n);
+  Serial.print(" [");
+  for (int i = 0; i < n && i < 8; ++i) {
+    if (i > 0) Serial.print(" ");
+    Serial.print(dht_seg_level[i] ? "H" : "L");
+    Serial.print(dht_seg_count[i]);
+  }
+  Serial.println(n > 8 ? " ...]" : "]");
+}
+
 // Read 40 bits from a DHT sensor and return "b0,b1,b2,b3,b4" (empty string on failure)
 String read_dht_bytes(int pin_num, int start_low_ms) {
   if (!valid_digital_in_pin(pin_num)) {
@@ -241,61 +275,52 @@ String read_dht_bytes(int pin_num, int start_low_ms) {
   }
   if (start_low_ms < 1 || start_low_ms > 30) start_low_ms = 20;
 
-  // Pulse width is judged by comparing loop counts, timeout is about 2ms of looping
-  uint32_t timeout = dht_loops_per_ms * 2;
-  uint32_t cycles[80];
-  uint8_t data[5] = {0, 0, 0, 0, 0};
-
-  // Idle high, then host start signal
+  // Idle line must be high (pull-up present)
   pinMode(pin_num, INPUT_PULLUP);
   delay(2);
   if (digitalRead(pin_num) == LOW) {
-    // Line stuck low: wiring, missing pull-up or sensor not powered
-    Serial.println("[MCU] [ERROR] DHT line is LOW while idle (check VCC/pull-up)");
+    Serial.println("[MCU] [ERROR] DHT line is LOW while idle (check VCC/GND/pull-up)");
     return "";
   }
+
+  // Host start signal, also measure how long a pin reconfiguration takes
+  unsigned long cfg_start = micros();
   pinMode(pin_num, OUTPUT);
+  unsigned long cfg_us = micros() - cfg_start;
   digitalWrite(pin_num, LOW);
   delay(start_low_ms);
-
-  // Release the line before locking, pin reconfiguration may use kernel services
-  pinMode(pin_num, INPUT_PULLUP);
-
-  // Timing critical section, roughly 5ms with interrupts locked
-  noInterrupts();
-
-  bool ok = true;
-  int fail_stage = 0;
-  // Wait for the sensor to pull the line low (20-40us after release)
-  (void) dht_expect_pulse(pin_num, HIGH, timeout);
-  // Sensor response: 80us low + 80us high
-  if (dht_expect_pulse(pin_num, LOW, timeout) == 0) { ok = false; fail_stage = 1; }
-  if (ok && dht_expect_pulse(pin_num, HIGH, timeout) == 0) { ok = false; fail_stage = 2; }
-
-  // Each bit: 50us low followed by 26-28us (0) or 70us (1) high
-  for (int i = 0; ok && i < 80; i += 2) {
-    cycles[i] = dht_expect_pulse(pin_num, LOW, timeout);
-    cycles[i + 1] = dht_expect_pulse(pin_num, HIGH, timeout);
-  }
-  interrupts();
-
-  if (!ok) {
-    // Stage 1: no response low pulse, stage 2: response high pulse missing
-    Serial.print("[MCU] [ERROR] DHT no response, stage ");
-    Serial.print(fail_stage);
-    Serial.print(", timeout loops ");
-    Serial.println(timeout);
+  if (digitalRead(pin_num) != LOW) {
+    Serial.println("[MCU] [ERROR] DHT line stays HIGH while driven LOW (short to VCC?)");
+    pinMode(pin_num, INPUT_PULLUP);
     return "";
   }
 
+  // Lock first so no thread can delay listening after the release (~5ms total)
+  uint32_t timeout = dht_loops_per_ms * 2;
+  noInterrupts();
+  pinMode(pin_num, INPUT_PULLUP);
+  int n = dht_capture(pin_num, timeout);
+  interrupts();
+
+  // Align from the end: ... [L H]x40, L(end), H(idle)
+  int end_low = -1;
+  for (int i = n - 1; i >= 0; --i) {
+    if (dht_seg_level[i] == LOW) { end_low = i; break; }
+  }
+  int first = end_low - 80;
+  if (end_low < 0 || first < 0 || dht_seg_level[first] != LOW) {
+    // 1 segment: sensor silent, 2..82 segments: listening started late or line noise
+    Serial.print("[MCU] [ERROR] DHT incomplete frame, pinMode took ");
+    Serial.print(cfg_us);
+    Serial.println(" us");
+    dht_dump_segments(n);
+    return "";
+  }
+
+  uint8_t data[5] = {0, 0, 0, 0, 0};
   for (int i = 0; i < 40; ++i) {
-    uint32_t low_cycles = cycles[2 * i];
-    uint32_t high_cycles = cycles[2 * i + 1];
-    if (low_cycles == 0 || high_cycles == 0) {
-      Serial.print("[MCU] [ERROR] DHT timeout at bit ");
-      Serial.println(i);
-      return "";
-    }
+    uint32_t low_cycles = dht_seg_count[first + 2 * i];
+    uint32_t high_cycles = dht_seg_count[first + 2 * i + 1];
     data[i / 8] <<= 1;
     // High longer than the preceding low means bit 1
     if (high_cycles > low_cycles) data[i / 8] |= 1;
@@ -310,7 +335,10 @@ String read_dht_bytes(int pin_num, int start_low_ms) {
   Serial.print("[MCU] [SENSOR READ] DHT Pin D");
   Serial.print(pin_num);
   Serial.print(" Bytes: ");
-  Serial.println(byteString);
+  Serial.print(byteString);
+  Serial.print(" (segments ");
+  Serial.print(n);
+  Serial.println(")");
 
   return byteString;
 }
