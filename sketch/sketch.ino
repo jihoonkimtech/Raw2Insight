@@ -96,17 +96,8 @@ int read_digital(int pin_num) {
   return val;
 }
 
-String read_i2c_bytes(String addr_str, int read_bytes) {
-  Serial.print("[MCU] [SENSOR READ] I2C Device (");
-  Serial.print(addr_str);
-  Serial.print(") Request Bytes: ");
-  Serial.println(read_bytes);
-
-  if (read_bytes <= 0) {
-    return "";
-  }
-
-  int addr = (int) strtol(addr_str.c_str(), NULL, 0);
+// Collect up to read_bytes from the bus and pad missing bytes with zero
+String collect_i2c_bytes(int addr, int read_bytes) {
   Wire.requestFrom(addr, read_bytes);
 
   String byteString = "";
@@ -129,6 +120,81 @@ String read_i2c_bytes(String addr_str, int read_bytes) {
   Serial.println(byteString);
 
   return byteString;
+}
+
+String read_i2c_bytes(String addr_str, int read_bytes) {
+  Serial.print("[MCU] [SENSOR READ] I2C Device (");
+  Serial.print(addr_str);
+  Serial.print(") Request Bytes: ");
+  Serial.println(read_bytes);
+
+  if (read_bytes <= 0) {
+    return "";
+  }
+
+  int addr = (int) strtol(addr_str.c_str(), NULL, 0);
+  return collect_i2c_bytes(addr, read_bytes);
+}
+
+// Set register pointer first, then read (for register-mapped sensors like MPU6050)
+String read_i2c_reg(String addr_str, int reg, int read_bytes) {
+  Serial.print("[MCU] [SENSOR READ] I2C Device (");
+  Serial.print(addr_str);
+  Serial.print(") Reg 0x");
+  Serial.print(reg, HEX);
+  Serial.print(" Request Bytes: ");
+  Serial.println(read_bytes);
+
+  if (read_bytes <= 0 || reg < 0 || reg > 0xFF) {
+    return "";
+  }
+
+  int addr = (int) strtol(addr_str.c_str(), NULL, 0);
+
+  Wire.beginTransmission(addr);
+  Wire.write((uint8_t) reg);
+  int result = Wire.endTransmission();
+  if (result != 0) {
+    // Return empty string so the Python side falls back to last good data
+    Serial.print("[MCU] [ERROR] I2C register select failed: ");
+    Serial.println(result);
+    return "";
+  }
+
+  return collect_i2c_bytes(addr, read_bytes);
+}
+
+// Write comma-separated bytes in one transaction (e.g. "107,0" -> reg 0x6B = 0x00)
+int write_i2c_bytes(String addr_str, String csv_bytes) {
+  int addr = (int) strtol(addr_str.c_str(), NULL, 0);
+
+  Wire.beginTransmission(addr);
+
+  int start = 0;
+  int written = 0;
+  while (start < (int) csv_bytes.length()) {
+    int comma = csv_bytes.indexOf(',', start);
+    if (comma < 0) comma = csv_bytes.length();
+    String token = csv_bytes.substring(start, comma);
+    token.trim();
+    if (token.length() > 0) {
+      Wire.write((uint8_t) strtol(token.c_str(), NULL, 0));
+      written++;
+    }
+    start = comma + 1;
+  }
+
+  int result = Wire.endTransmission();
+
+  Serial.print("[MCU] [I2C WRITE] Device (");
+  Serial.print(addr_str);
+  Serial.print(") Bytes: ");
+  Serial.print(written);
+  Serial.print(" Result: ");
+  Serial.println(result);
+
+  // Return 1 on ACK, 0 on any bus error
+  return (result == 0 && written > 0) ? 1 : 0;
 }
 
 int read_i2c(String addr_str) {
@@ -214,6 +280,8 @@ void setup() {
   Bridge.provide("read_analog", read_analog);
   Bridge.provide("read_digital", read_digital);
   Bridge.provide("read_i2c_bytes", read_i2c_bytes);
+  Bridge.provide("read_i2c_reg", read_i2c_reg);
+  Bridge.provide("write_i2c_bytes", write_i2c_bytes);
   Bridge.provide("read_i2c", read_i2c);
   Bridge.provide("write_digital", write_digital);
   Bridge.provide("write_pwm", write_pwm);

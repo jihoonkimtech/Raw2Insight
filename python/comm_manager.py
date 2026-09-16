@@ -17,7 +17,7 @@ class CommManager:
         print("[DEBUG] [CommManager] Calling MCU functions for read sensor data...")
         return Bridge.call("read_sensor")
         
-    def read_sensor_dynamic(self, protocol, pin_or_addr, read_bytes=0):
+    def read_sensor_dynamic(self, protocol, pin_or_addr, read_bytes=0, register=None):
         try:
             if protocol == 'analog':
                 pin_num = int(pin_or_addr.upper().replace('A', ''))
@@ -30,7 +30,14 @@ class CommManager:
                 return Bridge.call("read_digital", pin_num)
                 
             elif protocol == 'i2c':
-                if read_bytes > 0:
+                if read_bytes > 0 and register is not None:
+                    # Register-mapped read (pointer write + read)
+                    print(f"[DEBUG] [CommManager] Call function via Bridge : read_i2c_reg({pin_or_addr}, {hex(register)}, {read_bytes})")
+                    byte_str = Bridge.call("read_i2c_reg", pin_or_addr, int(register), read_bytes)
+                    if byte_str:
+                        return [int(x) for x in str(byte_str).split(",") if x.strip()]
+                    return []
+                elif read_bytes > 0:
                     print(f"[DEBUG] [CommManager] Call function via Bridge : read_i2c_bytes({pin_or_addr}, {read_bytes})")
                     byte_str = Bridge.call("read_i2c_bytes", pin_or_addr, read_bytes)
                     if byte_str:
@@ -49,6 +56,16 @@ class CommManager:
             print(f"[ERROR] [CommManager] Communication Fail ({protocol} - {pin_or_addr}): {e}")
             return [] if protocol == 'i2c' and read_bytes > 0 else 0
     
+    def write_i2c_bytes(self, addr, data_bytes):
+        # Send raw bytes to an I2C device, returns True on ACK
+        try:
+            csv_bytes = ",".join(str(int(b) & 0xFF) for b in data_bytes)
+            print(f"[DEBUG] [CommManager] Call function via Bridge : write_i2c_bytes({addr}, {csv_bytes})")
+            return bool(Bridge.call("write_i2c_bytes", addr, csv_bytes))
+        except Exception as e:
+            print(f"[ERROR] [CommManager] I2C write Fail ({addr}): {e}")
+            return False
+
     def set_actuator_dynamic(self, control_type, pin, value):
         try:
             pin_num = int(pin)

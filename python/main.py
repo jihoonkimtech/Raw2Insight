@@ -38,6 +38,9 @@ web.actuator_mem = actuator_mem
 # persistent variable for last known fine i2c data
 i2c_last_known_good = {}
 
+# i2c addresses whose init sequence has been applied (addr -> profile name)
+i2c_initialized = {}
+
 # cycle count for debug
 cycle_count = 0
 
@@ -57,6 +60,22 @@ def fire_webhook_async(url, payload_json, mem, messenger):
     t = threading.Thread(target=task)
     t.daemon = True
     t.start()
+
+def ensure_i2c_init(addr, profile):
+    # Run the driver init sequence once per address, returns False if the device did not ACK
+    if not profile.init_sequence:
+        return True
+    if i2c_initialized.get(addr) == profile.profile_name:
+        return True
+    for cmd in profile.init_sequence:
+        if not comm.write_i2c_bytes(addr, cmd):
+            print(f"[WARN] [Main] I2C init failed for {addr} ({profile.profile_name})")
+            return False
+        if profile.init_delay > 0:
+            time.sleep(profile.init_delay)
+    i2c_initialized[addr] = profile.profile_name
+    print(f"[DEBUG] [Main] I2C init done for {addr} ({profile.profile_name})")
+    return True
 
 def loop():
     global cycle_count
@@ -107,8 +126,13 @@ def loop():
                 if profile_info := profile_instance:
                     if s_pin not in i2c_cache:
                         print(f"[DEBUG] [Main] Can't find cache of {s_pin} sensor. Read start")
-                        raw_bytes = comm.read_sensor_dynamic('i2c', s_pin, read_bytes=profile_info.read_bytes)
-                        parsed_data = profile_info.parse(raw_bytes)
+                        parsed_data = None
+                        if ensure_i2c_init(s_pin, profile_info):
+                            raw_bytes = comm.read_sensor_dynamic('i2c', s_pin, read_bytes=profile_info.read_bytes, register=profile_info.read_register)
+                            parsed_data = profile_info.parse(raw_bytes)
+                            if not parsed_data:
+                                # Force re-init next cycle in case the device was reset or re-plugged
+                                i2c_initialized.pop(s_pin, None)
                         
                         if parsed_data:
                             # physical read success: update current cache and persistent fallback

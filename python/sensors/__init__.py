@@ -15,6 +15,12 @@ class BaseI2CSensor:
     default_addr = "0x00"
     read_bytes = 0
     outputs = [] # ["Temperature", "Humidity", ...]
+    # Optional: register pointer to set before reading (None = plain read)
+    read_register = None
+    # Optional: byte sequences written once before the first read, e.g. [[0x6B, 0x00]]
+    init_sequence = []
+    # Delay in seconds after each init write
+    init_delay = 0.0
 
     def parse(self, data_bytes):
         #take byte array and return {data type: value} to dictionary
