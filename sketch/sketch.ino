@@ -329,6 +329,10 @@ int read_i2c(String addr_str) {
   return (result == 0) ? 1 : 0;
 }
 
+// Current role of each output pin, avoids reconfiguring the pin on every write
+enum OutMode { OUT_NONE = 0, OUT_GPIO = 1, OUT_PWM = 2 };
+static uint8_t out_mode[22] = {0};
+
 int write_digital(int pin_num, int val) {
   if (!valid_digital_out_pin(pin_num)) {
     Serial.print("[MCU] [ERROR] Invalid digital output pin D");
@@ -336,13 +340,21 @@ int write_digital(int pin_num, int val) {
     return 0;
   }
 
-  pinMode(pin_num, OUTPUT);
-  digitalWrite(pin_num, val > 0 ? HIGH : LOW);
+  PinStatus level = val > 0 ? HIGH : LOW;
+
+  // Configure the pin once, reconfiguring on every call pulses it LOW on Zephyr
+  if (out_mode[pin_num] != OUT_GPIO) {
+    pinMode(pin_num, OUTPUT);
+    out_mode[pin_num] = OUT_GPIO;
+  }
+  digitalWrite(pin_num, level);
 
   Serial.print("[MCU] [ACTUATOR CONTROL] Digital Pin D");
   Serial.print(pin_num);
   Serial.print(" Write: ");
-  Serial.println(val > 0 ? 1 : 0);
+  Serial.print(level == HIGH ? 1 : 0);
+  Serial.print(" Readback: ");
+  Serial.println(digitalRead(pin_num));
 
   return 1;
 }
@@ -356,8 +368,9 @@ int write_pwm(int pin_num, int val) {
 
   int safe_val = constrain(val, 0, 255);
 
-  pinMode(pin_num, OUTPUT);
+  // analogWrite applies the timer pinmux itself, calling pinMode(OUTPUT) here would detach it
   analogWrite(pin_num, safe_val);
+  out_mode[pin_num] = OUT_PWM;
 
   Serial.print("[MCU] [ACTUATOR CONTROL] PWM Pin D");
   Serial.print(pin_num);
@@ -376,25 +389,16 @@ void setup() {
   pinMode(2, INPUT);
   pinMode(4, INPUT);
 
-  pinMode(5, OUTPUT);
-  pinMode(7, OUTPUT);
-  pinMode(8, OUTPUT);
-  pinMode(12, OUTPUT);
+  // Safe default: all outputs off
+  write_digital(5, 0);
+  write_digital(7, 0);
+  write_digital(8, 0);
+  write_digital(12, 0);
 
-  pinMode(6, OUTPUT);
-  pinMode(9, OUTPUT);
-  pinMode(10, OUTPUT);
-  pinMode(11, OUTPUT);
-
-  digitalWrite(5, LOW);
-  digitalWrite(7, LOW);
-  digitalWrite(8, LOW);
-  digitalWrite(12, LOW);
-
-  analogWrite(6, 0);
-  analogWrite(9, 0);
-  analogWrite(10, 0);
-  analogWrite(11, 0);
+  write_pwm(6, 0);
+  write_pwm(9, 0);
+  write_pwm(10, 0);
+  write_pwm(11, 0);
 
   Bridge.provide("read_analog", read_analog);
   Bridge.provide("read_digital", read_digital);

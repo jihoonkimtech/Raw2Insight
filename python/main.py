@@ -44,8 +44,34 @@ bus_last_read_time = {}
 # i2c addresses whose init sequence has been applied (addr -> profile name)
 i2c_initialized = {}
 
+# physical outputs written in the previous cycle: pin -> {'type', 'safe_val'}
+driven_outputs = {}
+
 # cycle count for debug
 cycle_count = 0
+
+def to_int(value, default=0):
+    # DB rows may carry numbers as strings or None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+def release_stale_outputs(current_outputs, actuators):
+    # Drive outputs that no actuator controls anymore (deleted or orphaned) back to their normal value
+    for pin, info in list(driven_outputs.items()):
+        if pin in current_outputs:
+            continue
+        print(f"[DEBUG] [Main] Releasing stale output pin {pin} -> {info['safe_val']}")
+        comm.set_actuator_dynamic(info['type'], pin, info['safe_val'])
+        driven_outputs.pop(pin, None)
+    driven_outputs.update(current_outputs)
+
+    # Drop runtime memory of deleted actuators
+    live_ids = {str(a['id']) for a in actuators}
+    for act_id in list(actuator_mem.keys()):
+        if act_id not in live_ids:
+            actuator_mem.pop(act_id, None)
 
 # added background thread helper for webhook to prevent main loop blocking
 def fire_webhook_async(url, payload_json, mem, messenger):
@@ -137,10 +163,13 @@ def loop():
         
         if not sensors:
             print("[DEBUG] [Main] 등록된 센서가 없습니다. 웹 대시보드에서 기기를 추가해주세요.")
+            # No sensor means no actuator is driven, release everything
+            release_stale_outputs({}, actuators)
             time.sleep(2)
             return
             
         payload = {}
+        current_outputs = {}
         bus_cache = {}
         
         for sensor in sensors:
@@ -263,7 +292,7 @@ def loop():
 
             linked_acts_info = []
             for act in actuators:
-                if act['linked_sensor_id'] == sensor['id']:
+                if str(act['linked_sensor_id']) == str(sensor['id']):
                     act_type = act.get('control_type', '')
                     act_id = str(act['id'])
                     
@@ -272,7 +301,7 @@ def loop():
                     
                     # init actuator memory
                     if act_id not in actuator_mem:
-                        actuator_mem[act_id] = {'timer_start': 0, 'latched': False, 'count': 0, 'status_text': '', 'prev_active': False}
+                        actuator_mem[act_id] = {'timer_start': 0, 'latched': False, 'count': 0, 'status_text': '', 'prev_active': False, 'last_dir': 'HIGH'}
                         
                     mem = actuator_mem[act_id]
 
@@ -359,10 +388,18 @@ def loop():
                         })
                         continue
 
-                    target_val = act.get('normal_val', 0)
+                    normal_val = to_int(act.get('normal_val'), 0)
+                    high_val = to_int(act.get('high_val'), 0)
+                    low_val = to_int(act.get('low_val'), 0)
+                    target_val = normal_val
+
+                    # Remember the direction that activated the output (latched/delayed states report NORMAL)
+                    if is_anomaly and direction in ("HIGH", "LOW"):
+                        mem['last_dir'] = direction
+                    active_dir = direction if direction in ("HIGH", "LOW") else mem.get('last_dir', 'HIGH')
                     
                     if final_active:
-                        base_target = act['high_val'] if direction == "HIGH" else act['low_val']
+                        base_target = high_val if active_dir == "HIGH" else low_val
                         
                         # calc output value
                         if act_type == 'pwm' and is_anomaly:
@@ -370,8 +407,8 @@ def loop():
                             intensity = manual_intensity if is_manual_anomaly else min(1.0, abs(score) / max_severity)
                             
                             # normal to base_target
-                            val_diff = base_target - act['normal_val']
-                            target_val = act['normal_val'] + int(val_diff * intensity)
+                            val_diff = base_target - normal_val
+                            target_val = normal_val + int(val_diff * intensity)
                             
                             # clamping to protect hardware limits
                             target_val = max(0, min(255, target_val))
@@ -380,7 +417,9 @@ def loop():
                             target_val = base_target
                             
                     # target_val send to MCU
-                    comm.set_actuator_dynamic(act['control_type'], act['pin'], target_val)
+                    target_val = int(target_val)
+                    comm.set_actuator_dynamic(act_type, act['pin'], target_val)
+                    current_outputs[str(act['pin'])] = {'type': act_type, 'safe_val': normal_val}
                     
                     linked_acts_info.append({
                         'id': act['id'],
@@ -414,6 +453,9 @@ def loop():
         except Exception as e:
             print(f"[ERROR] [Main] Failed to get system health: {e}")
             
+        # turn off outputs of deleted or unlinked actuators
+        release_stale_outputs(current_outputs, actuators)
+
         web.broadcast_multi_data(payload)
         
         print(f"--- [Main] Cycle #{cycle_count} Completed ---")

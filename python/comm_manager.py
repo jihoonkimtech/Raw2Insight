@@ -79,10 +79,19 @@ class CommManager:
     def set_actuator_dynamic(self, control_type, pin, value):
         try:
             pin_num = int(pin)
-            print(f"[ERROR] [CommManager] Actuator control ({control_type} - {pin}) [{value}]")
+            value = int(value)
+            print(f"[DEBUG] [CommManager] Actuator control ({control_type} - {pin}) [{value}]")
             if control_type == 'digital_out':
-                return Bridge.call("write_digital", pin_num, value)
+                result = Bridge.call("write_digital", pin_num, value)
             elif control_type == 'pwm':
-                return Bridge.call("write_pwm", pin_num, value)
+                result = Bridge.call("write_pwm", pin_num, value)
+            else:
+                print(f"[ERROR] [CommManager] Unknown actuator type: {control_type}")
+                return 0
+            # MCU returns 0 when the pin is not valid for the requested type
+            if not result:
+                print(f"[WARN] [CommManager] MCU rejected actuator write ({control_type} - {pin})")
+            return result
         except Exception as e:
             print(f"[ERROR] [CommManager] Actuator control Fail ({control_type} - {pin}): {e}")
+            return 0
