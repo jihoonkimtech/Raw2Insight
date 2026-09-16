@@ -35,8 +35,11 @@ sensor_prev_manual = {} # added for hysteresis tracking
 actuator_mem = {}
 web.actuator_mem = actuator_mem
 
-# persistent variable for last known fine i2c data
-i2c_last_known_good = {}
+# persistent variable for last known fine bus (i2c, dht) data, keyed by "protocol:pin"
+bus_last_known_good = {}
+
+# last physical read time per bus sensor, used for min_interval
+bus_last_read_time = {}
 
 # i2c addresses whose init sequence has been applied (addr -> profile name)
 i2c_initialized = {}
@@ -77,6 +80,51 @@ def ensure_i2c_init(addr, profile):
     print(f"[DEBUG] [Main] I2C init done for {addr} ({profile.profile_name})")
     return True
 
+def trigger_i2c_measurement(addr, profile):
+    # Send the per-read trigger command and wait for the conversion to finish
+    if not profile.trigger_sequence:
+        return True
+    for cmd in profile.trigger_sequence:
+        if not comm.write_i2c_bytes(addr, cmd):
+            print(f"[WARN] [Main] I2C trigger failed for {addr} ({profile.profile_name})")
+            return False
+    if profile.trigger_delay > 0:
+        time.sleep(profile.trigger_delay)
+    return True
+
+def read_bus_sensor(protocol, pin, profile, cache_key):
+    # Read and parse one bus sensor, falling back to the last good data on failure
+    last_good = bus_last_known_good.get(cache_key, {})
+    now = time.time()
+
+    # Respect the minimum conversion interval of slow sensors
+    if last_good and (now - bus_last_read_time.get(cache_key, 0)) < profile.min_interval:
+        return last_good
+
+    print(f"[DEBUG] [Main] Can't find cache of {cache_key} sensor. Read start")
+    bus_last_read_time[cache_key] = now
+    parsed_data = None
+
+    if protocol == 'i2c':
+        if ensure_i2c_init(pin, profile) and trigger_i2c_measurement(pin, profile):
+            raw_bytes = comm.read_sensor_dynamic('i2c', pin, read_bytes=profile.read_bytes, register=profile.read_register)
+            parsed_data = profile.parse(raw_bytes)
+            if not parsed_data:
+                # Force re-init next cycle in case the device was reset or re-plugged
+                i2c_initialized.pop(pin, None)
+    elif protocol == 'dht':
+        raw_bytes = comm.read_sensor_dynamic('dht', pin, read_bytes=profile.read_bytes, register=getattr(profile, 'start_low_ms', 20))
+        parsed_data = profile.parse(raw_bytes)
+
+    if parsed_data:
+        # physical read success: update persistent fallback
+        bus_last_known_good[cache_key] = parsed_data
+        return parsed_data
+
+    # physical read failed: use last known good value (fallback)
+    print(f"[WARN] [Main] {protocol.upper()} read failed for {pin}. Using fallback data.")
+    return last_good
+
 def loop():
     global cycle_count
     cycle_count += 1
@@ -93,7 +141,7 @@ def loop():
             return
             
         payload = {}
-        i2c_cache = {}
+        bus_cache = {}
         
         for sensor in sensors:
             s_name = sensor['name']
@@ -120,43 +168,30 @@ def loop():
             elif s_protocol == 'digital':
                 raw_value = comm.read_sensor_dynamic(s_protocol, s_pin)
                 calibrated_value = raw_value
-            elif s_protocol == 'i2c': 
-                # check driver
-                profile_instance = I2C_PROFILES.get(s_profile)
-                if profile_info := profile_instance:
-                    if s_pin not in i2c_cache:
-                        print(f"[DEBUG] [Main] Can't find cache of {s_pin} sensor. Read start")
-                        parsed_data = None
-                        if ensure_i2c_init(s_pin, profile_info):
-                            raw_bytes = comm.read_sensor_dynamic('i2c', s_pin, read_bytes=profile_info.read_bytes, register=profile_info.read_register)
-                            parsed_data = profile_info.parse(raw_bytes)
-                            if not parsed_data:
-                                # Force re-init next cycle in case the device was reset or re-plugged
-                                i2c_initialized.pop(s_pin, None)
-                        
-                        if parsed_data:
-                            # physical read success: update current cache and persistent fallback
-                            i2c_cache[s_pin] = parsed_data
-                            i2c_last_known_good[s_pin] = parsed_data
-                        else:
-                            # physical read failed: use last known good value (fallback)
-                            print(f"[WARN] [Main] I2C read failed for {s_pin}. Using fallback data.")
-                            i2c_cache[s_pin] = i2c_last_known_good.get(s_pin, {})
-                    
+            elif s_protocol in ('i2c', 'dht'):
+                # check driver (bus must match the protocol)
+                profile_info = I2C_PROFILES.get(s_profile)
+                if profile_info and profile_info.bus == s_protocol:
+                    cache_key = f"{s_protocol}:{s_pin}"
+                    if cache_key not in bus_cache:
+                        bus_cache[cache_key] = read_bus_sensor(s_protocol, s_pin, profile_info, cache_key)
+
                     # extract 'data_key' value from cache (which now has fresh or fallback data)
-                    parsed_dict = i2c_cache[s_pin]
+                    parsed_dict = bus_cache[cache_key]
                     if parsed_dict and s_data_key in parsed_dict:
                         calibrated_value = parsed_dict[s_data_key]
                     else:
                         print(f"[ERROR] [Main] Can't find {s_data_key} KEY!")
-                           
-                else:
+
+                elif s_protocol == 'i2c':
                     print(f"[DEBUG] [Main] Call debug i2c function!")
                     calibrated_value = comm.read_sensor_dynamic('i2c', s_pin)
+                else:
+                    print(f"[ERROR] [Main] No {s_protocol} driver named {s_profile}")
 
-                
-            # store in DB
-            db.insert_data(calibrated_value, s_name)
+            # store in DB (skip missing values so one failed sensor does not abort the cycle)
+            if calibrated_value is not None:
+                db.insert_data(calibrated_value, s_name)
 
             # load data (improved: fetch more for AI context, UI gets sliced later)
             formatted_rows, values_only = db.get_aggregated_data(s_name, limit=300)
@@ -185,7 +220,10 @@ def loop():
                 if s_name not in sensor_prev_manual:
                     sensor_prev_manual[s_name] = {"HIGH": False, "LOW": False}
 
-                if s_thresh_high is not None:
+                # Skip threshold checks when no value is available yet (e.g. first bus read failed)
+                if calibrated_value is None:
+                    print(f"[WARN] [Main] No value for {s_name}, threshold check skipped")
+                elif s_thresh_high is not None:
                     if calibrated_value > s_thresh_high:
                         sensor_prev_manual[s_name]["HIGH"] = True
                         is_anomaly, is_manual_anomaly, direction = True, True, "HIGH"
@@ -194,7 +232,7 @@ def loop():
                     else:
                         sensor_prev_manual[s_name]["HIGH"] = False
 
-                if not is_manual_anomaly and s_thresh_low is not None:
+                if not is_manual_anomaly and calibrated_value is not None and s_thresh_low is not None:
                     if calibrated_value < s_thresh_low:
                         sensor_prev_manual[s_name]["LOW"] = True
                         is_anomaly, is_manual_anomaly, direction = True, True, "LOW"

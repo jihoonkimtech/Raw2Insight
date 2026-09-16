@@ -36,6 +36,7 @@ class WebServer:
         profiles_data = {}
         for name, inst in I2C_PROFILES.items():
             profiles_data[name] = {
+                "bus": inst.bus,
                 "default_addr": inst.default_addr,
                 "outputs": inst.outputs
             }

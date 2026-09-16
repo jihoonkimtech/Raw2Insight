@@ -48,13 +48,23 @@ class CommManager:
                     print(f"[DEBUG] [CommManager] Call function via Bridge : read_i2c({pin_or_addr})")
                     return Bridge.call("read_i2c", pin_or_addr)
                 
+            elif protocol == 'dht':
+                # register carries the start signal length (ms) for the DHT family
+                pin_num = int(pin_or_addr)
+                start_low_ms = int(register) if register is not None else 20
+                print(f"[DEBUG] [CommManager] Call function via Bridge : read_dht_bytes({pin_num}, {start_low_ms})")
+                byte_str = Bridge.call("read_dht_bytes", pin_num, start_low_ms)
+                if byte_str:
+                    return [int(x) for x in str(byte_str).split(",") if x.strip()]
+                return []
+
             else:
                 print(f"[ERROR] [CommManager] Unknown Protocol: {protocol}")
                 return 0
                 
         except Exception as e:
             print(f"[ERROR] [CommManager] Communication Fail ({protocol} - {pin_or_addr}): {e}")
-            return [] if protocol == 'i2c' and read_bytes > 0 else 0
+            return [] if protocol == 'dht' or (protocol == 'i2c' and read_bytes > 0) else 0
     
     def write_i2c_bytes(self, addr, data_bytes):
         # Send raw bytes to an I2C device, returns True on ACK

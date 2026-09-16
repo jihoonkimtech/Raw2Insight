@@ -27,6 +27,7 @@ Arduino UNO Q의 하드웨어 I/O와 Linux 기반 Python 오케스트레이션 �
   - `analog`
   - `digital`
   - `i2c`
+  - `dht` (DHT 계열 단선 센서, DIN01/DIN02 단자)
 - 지원 액추에이터 타입:
   - `digital_out`
   - `pwm`
@@ -35,7 +36,10 @@ Arduino UNO Q의 하드웨어 I/O와 Linux 기반 Python 오케스트레이션 �
 - `sensors/` 디렉토리에 파이썬 클래스를 추가하면 새로운 I2C 센서 드라이버를 동적으로 확장할 수 있습니다.
 - 각 드라이버는 `BaseI2CSensor`를 상속받아 `read_bytes`, `default_addr`, `outputs`, `parse()`를 구현합니다.
 - 레지스터 기반 센서는 선택 속성인 `read_register`(읽기 전 지정할 레지스터), `init_sequence`(최초 1회 쓰기 바이트 목록), `init_delay`를 함께 정의합니다. 읽기에 실패하면 다음 주기에 초기화를 다시 수행합니다.
-- 기본 제공 드라이버: `AHT20`(온도/습도), `MPU6050`(3축 가속도·자이로, 가속도 크기, Roll/Pitch, 온도)
+- 레지스터 기반 센서는 선택 속성인 `trigger_sequence`, `trigger_delay`로 읽기 직전마다 측정 명령을 보낼 수 있습니다.
+- 단선(DHT) 센서는 `BaseDHTSensor`를 상속받습니다. 40비트 타이밍 디코딩은 MCU의 `read_dht_bytes`가 수행하고, 드라이버는 5바이트를 파싱합니다. `min_interval`로 최소 측정 간격을 지정합니다.
+- 기본 제공 드라이버: `AHT20`(온도/습도), `MPU6050`(3축 가속도·자이로, 가속도 크기, Roll/Pitch, 온도), `DHT11`(온도/습도)
+- DHT11은 3.3V 전원과 DATA–VCC 사이 4.7kΩ~10kΩ 풀업 사용을 권장합니다. MCU 로직은 3.3V입니다.
 - 런타임에 프로필이 로드되어 웹 UI에서 선택할 수 있습니다.
 
 ### ⚙️ 4. 지능형 액추에이터 제어 (Smart Actuator Control)

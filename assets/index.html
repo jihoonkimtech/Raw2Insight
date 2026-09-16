@@ -189,6 +189,7 @@
                                     <option value="analog">아날로그 (Analog)</option>
                                     <option value="digital">디지털 (Digital)</option>
                                     <option value="i2c">I2C (버스 통신)</option>
+                                    <option value="dht">DHT (단선 통신)</option>
                                 </select>
                             </div>
 
@@ -617,6 +618,10 @@
             'digital': [
                 { pin: '2', label: 'DIN01' }, 
                 { pin: '4', label: 'DIN02' }
+            ],
+            'dht': [
+                { pin: '2', label: 'DIN01' }, 
+                { pin: '4', label: 'DIN02' }
             ]
         };
 
@@ -745,12 +750,30 @@
                 calibContainer.style.display = 'none';
                 analogContainer.style.display = 'flex';
                 digitalContainer.style.display = 'none';
+            } else if (protocol === 'dht') {
+                pinSelect.style.display = 'block';
+                pinInput.style.display = 'none';
+                
+                i2cContainer.style.display = 'flex'; 
+                calibContainer.style.display = 'none';
+                analogContainer.style.display = 'flex';
+                digitalContainer.style.display = 'none';
+                
+                pinSelect.innerHTML = '';
+                senPinMap[protocol].forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item.pin;
+                    option.text = `${item.label} (Pin D${item.pin})`;
+                    pinSelect.appendChild(option);
+                });
             }
+            // Show only drivers that match the selected bus
+            renderProfileOptions(protocol);
         }
 
         function submitSensor() {
             const protocol = document.getElementById('sen-protocol').value;
-            const pin = (protocol === 'analog' || protocol === 'digital') ? document.getElementById('sen-pin-select').value : document.getElementById('sen-pin-input').value;
+            const pin = (protocol === 'analog' || protocol === 'digital' || protocol === 'dht') ? document.getElementById('sen-pin-select').value : document.getElementById('sen-pin-input').value;
             
             if(!document.getElementById('sen-name').value) {
                 alert("센서 이름을 입력하세요."); return;
@@ -758,11 +781,11 @@
 
             let tLow = null; let tHigh = null; let pName = null; let dKey = null;
           
-            if (protocol === 'i2c') {
+            if (protocol === 'i2c' || protocol === 'dht') {
                 pName = document.getElementById('sen-i2c-profile').value;
                 dKey = document.getElementById('sen-i2c-datakey').value;
                 if (!pName || !dKey) {
-                    alert("I2C 드라이버와 추출할 데이터를 모두 선택하세요!"); return;
+                    alert("센서 드라이버와 추출할 데이터를 모두 선택하세요!"); return;
                 }
             }
 
@@ -792,8 +815,8 @@
             document.getElementById('sen-thresh-low').value = '';
             document.getElementById('sen-thresh-high').value = '';
             document.getElementById('sen-digital-trigger').value = '1';
-            if(protocol === 'i2c'){
-              document.getElementById('sen-pin-input').value = '';
+            if(protocol === 'i2c' || protocol === 'dht'){
+              if (protocol === 'i2c') document.getElementById('sen-pin-input').value = '';
               document.getElementById('sen-i2c-datakey').value = '';
               document.getElementById('sen-i2c-profile').value = '';
             }
@@ -887,6 +910,8 @@
                     protocolBadge = '<span class="badge badge-digital">디지털</span>';
                 } else if (sen.protocol === 'i2c') {
                     protocolBadge = '<span class="badge badge-i2c">I2C</span>';
+                } else if (sen.protocol === 'dht') {
+                    protocolBadge = '<span class="badge badge-i2c">DHT</span>';
                 }
                 const mappedLabel = pinLabelMap[sen.pin] || sen.pin;
                 const pinDisplay = `${protocolBadge} (${mappedLabel})`;
@@ -1035,13 +1060,24 @@
 
         socket.on('update_i2c_profiles', function(data) {
             availableI2CProfiles = data;
-            const profileSelect = document.getElementById('sen-i2c-profile');
-            profileSelect.innerHTML = '<option value="">I2C 센서 드라이버 선택...</option>';
-            
-            Object.keys(data).forEach(profileName => {
-                profileSelect.innerHTML += `<option value="${profileName}">${profileName}</option>`;
-            });
+            renderProfileOptions(document.getElementById('sen-protocol').value);
         });
+
+        function renderProfileOptions(protocol) {
+            const profileSelect = document.getElementById('sen-i2c-profile');
+            const keySelect = document.getElementById('sen-i2c-datakey');
+            const busLabel = protocol === 'dht' ? 'DHT' : 'I2C';
+            profileSelect.innerHTML = `<option value="">${busLabel} 센서 드라이버 선택...</option>`;
+            keySelect.innerHTML = '<option value="">추출할 데이터 선택...</option>';
+
+            Object.keys(availableI2CProfiles).forEach(profileName => {
+                // Older servers do not send "bus", treat those as I2C
+                const bus = availableI2CProfiles[profileName].bus || 'i2c';
+                if (bus === protocol) {
+                    profileSelect.innerHTML += `<option value="${profileName}">${profileName}</option>`;
+                }
+            });
+        }
 
         function onI2CProfileChange() {
             const selectedProfile = document.getElementById('sen-i2c-profile').value;
@@ -1052,7 +1088,9 @@
             
             if (selectedProfile && availableI2CProfiles[selectedProfile]) {
                 const profileInfo = availableI2CProfiles[selectedProfile];
-                pinInput.value = profileInfo.default_addr;
+                if ((profileInfo.bus || 'i2c') === 'i2c') {
+                    pinInput.value = profileInfo.default_addr;
+                }
                 profileInfo.outputs.forEach(outputKey => {
                     keySelect.innerHTML += `<option value="${outputKey}">${outputKey}</option>`;
                 });

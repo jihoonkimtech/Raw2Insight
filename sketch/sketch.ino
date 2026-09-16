@@ -197,6 +197,106 @@ int write_i2c_bytes(String addr_str, String csv_bytes) {
   return (result == 0 && written > 0) ? 1 : 0;
 }
 
+// Count loop iterations while the line stays at level, 0 on timeout
+static uint32_t dht_expect_pulse(int pin_num, int level, uint32_t max_count) {
+  uint32_t count = 0;
+  while (digitalRead(pin_num) == level) {
+    if (count++ >= max_count) return 0;
+  }
+  return count;
+}
+
+// Iterations of a digitalRead loop per millisecond, measured once at boot
+static uint32_t dht_loops_per_ms = 0;
+
+static void dht_calibrate() {
+  pinMode(2, INPUT);
+  uint32_t loops = 0;
+  unsigned long start = millis();
+  while (millis() - start < 20) {
+    (void) digitalRead(2);
+    loops++;
+  }
+  dht_loops_per_ms = loops / 20;
+  if (dht_loops_per_ms < 100) dht_loops_per_ms = 100;
+  Serial.print("[MCU] DHT loop calibration: ");
+  Serial.print(dht_loops_per_ms);
+  Serial.println(" loops/ms");
+}
+
+// Read 40 bits from a DHT sensor and return "b0,b1,b2,b3,b4" (empty string on failure)
+String read_dht_bytes(int pin_num, int start_low_ms) {
+  if (!valid_digital_in_pin(pin_num)) {
+    Serial.print("[MCU] [ERROR] Invalid DHT pin D");
+    Serial.println(pin_num);
+    return "";
+  }
+  if (start_low_ms < 1 || start_low_ms > 30) start_low_ms = 20;
+
+  // Pulse width is judged by comparing loop counts, so no microsecond timer is needed
+  uint32_t timeout = dht_loops_per_ms;
+  uint32_t cycles[80];
+  uint8_t data[5] = {0, 0, 0, 0, 0};
+
+  // Idle high, then host start signal
+  pinMode(pin_num, INPUT_PULLUP);
+  delay(2);
+  pinMode(pin_num, OUTPUT);
+  digitalWrite(pin_num, LOW);
+  delay(start_low_ms);
+
+  // Release the line before locking, pin reconfiguration may use kernel services
+  pinMode(pin_num, INPUT_PULLUP);
+
+  // Timing critical section, roughly 5ms with interrupts locked
+  noInterrupts();
+
+  bool ok = true;
+  // Wait for the sensor to pull the line low (20-40us after release)
+  (void) dht_expect_pulse(pin_num, HIGH, timeout);
+  // Sensor response: 80us low + 80us high
+  if (dht_expect_pulse(pin_num, LOW, timeout) == 0) ok = false;
+  if (ok && dht_expect_pulse(pin_num, HIGH, timeout) == 0) ok = false;
+
+  // Each bit: 50us low followed by 26-28us (0) or 70us (1) high
+  for (int i = 0; ok && i < 80; i += 2) {
+    cycles[i] = dht_expect_pulse(pin_num, LOW, timeout);
+    cycles[i + 1] = dht_expect_pulse(pin_num, HIGH, timeout);
+  }
+  interrupts();
+
+  if (!ok) {
+    Serial.println("[MCU] [ERROR] DHT no response");
+    return "";
+  }
+
+  for (int i = 0; i < 40; ++i) {
+    uint32_t low_cycles = cycles[2 * i];
+    uint32_t high_cycles = cycles[2 * i + 1];
+    if (low_cycles == 0 || high_cycles == 0) {
+      Serial.print("[MCU] [ERROR] DHT timeout at bit ");
+      Serial.println(i);
+      return "";
+    }
+    data[i / 8] <<= 1;
+    // High longer than the preceding low means bit 1
+    if (high_cycles > low_cycles) data[i / 8] |= 1;
+  }
+
+  String byteString = "";
+  for (int i = 0; i < 5; ++i) {
+    if (i > 0) byteString += ",";
+    byteString += String(data[i]);
+  }
+
+  Serial.print("[MCU] [SENSOR READ] DHT Pin D");
+  Serial.print(pin_num);
+  Serial.print(" Bytes: ");
+  Serial.println(byteString);
+
+  return byteString;
+}
+
 int read_i2c(String addr_str) {
   int addr = (int) strtol(addr_str.c_str(), NULL, 0);
 
@@ -253,6 +353,7 @@ void setup() {
   Serial.begin(9600);
   Bridge.begin();
   Wire.begin();
+  dht_calibrate();
 
   pinMode(2, INPUT);
   pinMode(4, INPUT);
@@ -282,6 +383,7 @@ void setup() {
   Bridge.provide("read_i2c_bytes", read_i2c_bytes);
   Bridge.provide("read_i2c_reg", read_i2c_reg);
   Bridge.provide("write_i2c_bytes", write_i2c_bytes);
+  Bridge.provide("read_dht_bytes", read_dht_bytes);
   Bridge.provide("read_i2c", read_i2c);
   Bridge.provide("write_digital", write_digital);
   Bridge.provide("write_pwm", write_pwm);
@@ -292,6 +394,7 @@ void setup() {
   Serial.println("[MCU] DOUT: D5, D7, D8, D12");
   Serial.println("[MCU] PWM : D6, D9, D10, D11");
   Serial.println("[MCU] I2C : SDA(D20), SCL(D21)");
+  Serial.println("[MCU] DHT : D2, D4 (DIN terminals)");
 }
 
 void loop() {
