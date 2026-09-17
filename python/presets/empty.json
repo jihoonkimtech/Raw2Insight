@@ -1,0 +1,7 @@
+{
+  "format": "raw2insight-preset",
+  "version": 1,
+  "description": "모든 장치 비우기",
+  "sensors": [],
+  "actuators": []
+}

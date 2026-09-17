@@ -2,3 +2,13 @@
 .cache/
 /python/__pycache__
 /python/sensors/__pycache__
+# python bytecode cache
+__pycache__/
+*.pyc
+
+# App Lab runtime data (SQLite/InfluxDB), presets live in python/presets
+data/
+
+# local device presets (python/presets/default.json is auto-loaded on an empty DB but never committed)
+python/presets/*.json
+!python/presets/empty.json

@@ -10,6 +10,7 @@ import json
 from arduino.app_utils import *
 from arduino.app_bricks.web_ui import WebUI
 from sensors import load_sensor_profiles
+import config_preset
 from logutil import dbg
 
 I2C_PROFILES = load_sensor_profiles()
@@ -34,6 +35,9 @@ class WebServer:
         self.ui.on_message('add_actuator_request', self.on_add_actuator)
         self.ui.on_message('update_sensor_request', self.on_update_sensor)
         self.ui.on_message('update_actuator_request', self.on_update_actuator)
+        self.ui.on_message('export_config_request', self.on_export_config)
+        self.ui.on_message('list_presets_request', self.on_list_presets)
+        self.ui.on_message('apply_preset_request', self.on_apply_preset)
         self.ui.on_message('delete_device_request', self.on_delete_device)
         self.ui.on_message('change_sensitivity', self.on_change_sensitivity)
         self.ui.on_message('request_i2c_profiles', self.on_request_i2c_profiles)
@@ -141,6 +145,36 @@ class WebServer:
             # reset in place so the main loop never sees a missing key
             mem.update({'timer_start': 0, 'latched': False, 'count': 0, 'status_text': '', 'prev_active': False})
         self.ui.send_message('device_list_updated', {'type': 'actuator'})
+
+    def on_export_config(self, sid, data):
+        self.ui.send_message('config_export', config_preset.export_config(self.db))
+
+    def on_list_presets(self, sid, data):
+        self.ui.send_message('preset_list', {'presets': config_preset.list_presets()})
+
+    def on_apply_preset(self, sid, data):
+        # data: {'name': 'default.json'} for a bundled preset or {'preset': {...}} for an uploaded file
+        try:
+            if data.get('preset') is not None:
+                preset = data['preset']
+                if isinstance(preset, str):
+                    preset = json.loads(preset)
+            else:
+                preset = config_preset.load_preset_file(str(data.get('name', '')))
+            n_sen, n_act = config_preset.apply_preset(self.db, preset)
+        except (config_preset.PresetError, ValueError) as e:
+            self.ui.send_message('preset_result', {'ok': False, 'message': str(e)})
+            return
+        except Exception as e:
+            print(f"[ERROR] [WebServer] Preset apply failed: {e}")
+            self.ui.send_message('preset_result', {'ok': False, 'message': f'적용 중 오류: {e}'})
+            return
+        # outputs, latches and counters start fresh with the new configuration
+        if self.actuator_mem is not None:
+            for mem in self.actuator_mem.values():
+                mem.update({'timer_start': 0, 'latched': False, 'count': 0, 'status_text': '', 'prev_active': False})
+        self.ui.send_message('preset_result', {'ok': True, 'message': f'센서 {n_sen}개, 출력 {n_act}개를 불러왔어요.'})
+        self.ui.send_message('device_list_updated', {'type': 'preset'})
 
     def broadcast_data(self, rows, is_anomaly):
         # send aggregated DB data and AI detection status

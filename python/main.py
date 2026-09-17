@@ -21,11 +21,15 @@ from web_server import WebServer
 from ai_manager import AIManager
 from sensors import load_sensor_profiles
 from history import SensorHistory
+from config_preset import seed_if_empty
 
 print("Raw2Insight System Starting...")
 
 # create instance of custom modules
 db = DBManager()
+# a fresh /app/data starts from python/presets/default.json
+if seed_if_empty(db):
+    print("[INFO] [Main] Device configuration loaded from presets/default.json")
 comm = CommManager()
 web = WebServer(db)
 ai = AIManager()

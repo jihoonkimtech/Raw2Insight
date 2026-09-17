@@ -237,6 +237,12 @@ class DBManager:
             print(f"[ERROR] [DBManager] Error reading raw samples: {e}")
             return []
             
+    def clear_config(self):
+        # Remove every registered device (used when a preset replaces the configuration)
+        self.config_db.execute_sql("DELETE FROM actuators", None)
+        self.config_db.execute_sql("DELETE FROM sensors", None)
+        self.mark_config_changed()
+
     def update_sensor(self, sensor_id, fields):
         # Update editable sensor fields only (name, protocol and pin stay fixed)
         allowed = ("data_type", "unit", "threshold_low", "threshold_high", "multiplier", "offset")
