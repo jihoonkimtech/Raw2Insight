@@ -87,6 +87,16 @@ def to_int(value, default=0):
     except (TypeError, ValueError):
         return default
 
+def overshoot_intensity(gap, threshold, other_threshold=None):
+    # Map how far a value passed its threshold to 0..1 (full at 20% of the threshold magnitude)
+    scale = abs(threshold) * 0.2
+    if scale == 0 and other_threshold is not None:
+        # threshold 0: fall back to 20% of the band width
+        scale = abs(other_threshold - threshold) * 0.2
+    if scale == 0:
+        scale = 10.0
+    return max(0.0, min(1.0, gap / scale))
+
 def release_stale_outputs(current_outputs, actuators):
     # Drive outputs that no actuator controls anymore (deleted or orphaned) back to their normal value
     for pin, info in list(driven_outputs.items()):
@@ -326,12 +336,10 @@ def loop():
                 if is_manual_anomaly:
                     if direction == "HIGH":
                         gap = calibrated_value - s_thresh_high
-                        max_gap = s_thresh_high * 0.2 if s_thresh_high != 0 else 10.0
-                        manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
+                        manual_intensity = overshoot_intensity(gap, s_thresh_high, s_thresh_low)
                     elif direction == "LOW":
                         gap = s_thresh_low - calibrated_value
-                        max_gap = s_thresh_low * 0.2 if s_thresh_low != 0 else 10.0
-                        manual_intensity = min(1.0, gap / max_gap) if max_gap > 0 else 1.0
+                        manual_intensity = overshoot_intensity(gap, s_thresh_low, s_thresh_high)
 
             just_triggered = False
             if s_name not in sensor_prev_states:
@@ -358,7 +366,10 @@ def loop():
                     mem = actuator_mem[act_id]
 
                     # check delay and latch condition
-                    delay_sec = extra.get('delay', 0)
+                    delay_sec = to_int(extra.get('delay', 0), 0)
+                    # the timer's own duration field is its delay when no delay is given
+                    if act_type == 'virtual_timer' and delay_sec <= 0:
+                        delay_sec = to_int(extra.get('duration', 0), 0)
                     use_latch = extra.get('latch', False)
                     condition_met = False
                     
