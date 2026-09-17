@@ -237,6 +237,30 @@ class DBManager:
             print(f"[ERROR] [DBManager] Error reading raw samples: {e}")
             return []
             
+    def update_sensor(self, sensor_id, fields):
+        # Update editable sensor fields only (name, protocol and pin stay fixed)
+        allowed = ("data_type", "unit", "threshold_low", "threshold_high", "multiplier", "offset")
+        cols = [k for k in allowed if k in fields]
+        if not cols:
+            return
+        query = "UPDATE sensors SET " + ", ".join(f"{c} = ?" for c in cols) + " WHERE id = ?"
+        params = tuple(fields[c] for c in cols) + (sensor_id,)
+        self.config_db.execute_sql(query, params)
+        self.mark_config_changed()
+        dbg(f"[DEBUG] [DBManager] Sensor ID {sensor_id} updated: {fields}")
+
+    def update_actuator(self, actuator_id, fields):
+        # Update editable actuator fields only (control type and pin stay fixed)
+        allowed = ("name", "normal_val", "low_val", "high_val", "trigger_dir", "linked_sensor_id", "extra_params")
+        cols = [k for k in allowed if k in fields]
+        if not cols:
+            return
+        query = "UPDATE actuators SET " + ", ".join(f"{c} = ?" for c in cols) + " WHERE id = ?"
+        params = tuple(fields[c] for c in cols) + (actuator_id,)
+        self.config_db.execute_sql(query, params)
+        self.mark_config_changed()
+        dbg(f"[DEBUG] [DBManager] Actuator ID {actuator_id} updated: {fields}")
+
     def update_sensor_sensitivity(self, sensor_id, sensitivity):
         try:
             # if not exist sensitivity column? create

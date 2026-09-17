@@ -278,6 +278,60 @@
         .badge-i2c { background: var(--virtual-wash); color: var(--virtual); }
         .tag-crit { background: var(--critical-wash); color: var(--critical-ink); }
 
+        /* output value fields: color-coded by the state they apply to */
+        .field-label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 2px; }
+        .field-label.thr-low { color: var(--accent-ink); }
+        .field-label.thr-high { color: var(--critical-ink); }
+        .out-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+        .out-field {
+            display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 8px;
+            border: 1px solid var(--border); background: var(--surface);
+        }
+        .out-field input {
+            width: 100%; height: 34px; padding: 6px 8px; border-radius: 6px; font: inherit; font-size: 16px; font-weight: 600;
+            border: 1px solid var(--border); background: var(--input-bg); color: var(--ink-1);
+        }
+        .out-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+        .out-label i { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--ink-3); }
+        .out-normal .out-label i { background: var(--good); }
+        .out-low { border-color: var(--series-1); background: var(--accent-wash); }
+        .out-low .out-label { color: var(--accent-ink); }
+        .out-low .out-label i { background: var(--series-1); }
+        .out-high { border-color: var(--critical); background: var(--critical-wash); }
+        .out-high .out-label { color: var(--critical-ink); }
+        .out-high .out-label i { background: var(--critical); }
+        .out-field.unused { opacity: 0.4; border-style: dashed; }
+        .out-field.unused .out-label::after { content: '사용 안 함'; font-weight: 400; margin-left: auto; color: var(--ink-3); }
+        .rule { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 12px; white-space: nowrap; border: 1px solid var(--border); }
+        .rule-low { color: var(--accent-ink); background: var(--accent-wash); }
+        .rule-high { color: var(--critical-ink); background: var(--critical-wash); }
+        .row-actions { white-space: nowrap; }
+        .row-actions button + button { margin-left: 4px; }
+        .edit-btn {
+            background: transparent; color: var(--accent-ink); border: 1px solid var(--series-1);
+            padding: 3px 8px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px;
+        }
+        .edit-btn:hover { background: var(--accent-wash); }
+
+        /* edit dialog */
+        dialog {
+            width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto;
+            border: 1px solid var(--border); border-radius: 12px; padding: 0;
+            background: var(--surface); color: var(--ink-1); box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+        }
+        dialog::backdrop { background: rgba(0,0,0,0.55); }
+        dialog form { padding: 16px; }
+        dialog input:not([type=checkbox]), dialog select {
+            width: 100%; height: 34px; padding: 6px 8px; border-radius: 6px; font: inherit;
+            border: 1px solid var(--border); background: var(--input-bg); color: var(--ink-1);
+        }
+        dialog .opt-box input[type=number] { width: 60px; display: inline-block; }
+        dialog .form-group { margin-bottom: 10px; min-width: 0; }
+        .dlg-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+        .dlg-head h3 { margin: 2px 0 0; font-size: 18px; }
+        .dlg-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+        .dlg-foot span { flex: 1; }
+
         /* ===== small screens: scroll the page instead of squeezing ===== */
         @media (max-width: 1600px) {
             .settings-layout { grid-template-columns: minmax(0, 1fr); }
@@ -298,6 +352,7 @@
             .grid { overflow: visible; grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: none !important; grid-auto-rows: 250px; }
             .settings-scroll { overflow: visible; }
             .form-row-inner { flex-direction: column; }
+            .out-grid { grid-template-columns: minmax(0, 1fr); }
             .flex-col { min-width: 0; }
         }
         @media (max-width: 480px) {
@@ -437,19 +492,27 @@
                             </div>
 
                             <div id="physical-configs">
-                                <div class="form-group form-row-inner">
-                                    <div><input type="number" id="act-normal" placeholder="평상시 (0~255)" min="0" max="255" step="1" oninput="this.value = this.value.replace(/[^0-9]/g, ''); if(this.value !== '' && parseInt(this.value) > parseInt(this.max)) this.value = this.max;"></div>
-                                    <div>
-                                        <select id="act-dir" onchange="updateActuatorDirUI()">
-                                            <option value="BOTH">양방향 (높음/낮음 이상 모두)</option>
-                                            <option value="HIGH">단방향 (높음 이상일 때만)</option>
-                                            <option value="LOW">단방향 (낮음 이상일 때만)</option>
-                                        </select>
-                                    </div>
+                                <div class="form-group">
+                                    <label class="field-label" for="act-dir">동작 조건</label>
+                                    <select id="act-dir" onchange="updateActuatorDirUI('act')">
+                                        <option value="BOTH">하한 미만 · 상한 초과 모두</option>
+                                        <option value="HIGH">상한 초과일 때만</option>
+                                        <option value="LOW">하한 미만일 때만</option>
+                                    </select>
                                 </div>
-                                <div class="form-group form-row-inner">
-                                    <div><input type="number" id="act-low" placeholder="낮음 이상 시 (0~255)" min="0" max="255" step="1" oninput="this.value = this.value.replace(/[^0-9]/g, ''); if(this.value !== '' && parseInt(this.value) > parseInt(this.max)) this.value = this.max;"></div>
-                                    <div><input type="number" id="act-high" placeholder="높음 이상 시 (0~255)" min="0" max="255" step="1" oninput="this.value = this.value.replace(/[^0-9]/g, ''); if(this.value !== '' && parseInt(this.value) > parseInt(this.max)) this.value = this.max;"></div>
+                                <div class="out-grid">
+                                    <label class="out-field out-normal">
+                                        <span class="out-label"><i></i>평상시 출력</span>
+                                        <input type="number" id="act-normal" placeholder="0~255" min="0" max="255" step="1" oninput="this.value = this.value.replace(/[^0-9]/g, ''); if(this.value !== '' && parseInt(this.value) > parseInt(this.max)) this.value = this.max;">
+                                    </label>
+                                    <label class="out-field out-low">
+                                        <span class="out-label"><i></i>▼ 하한 미만일 때</span>
+                                        <input type="number" id="act-low" placeholder="0~255" min="0" max="255" step="1" oninput="this.value = this.value.replace(/[^0-9]/g, ''); if(this.value !== '' && parseInt(this.value) > parseInt(this.max)) this.value = this.max;">
+                                    </label>
+                                    <label class="out-field out-high">
+                                        <span class="out-label"><i></i>▲ 상한 초과일 때</span>
+                                        <input type="number" id="act-high" placeholder="0~255" min="0" max="255" step="1" oninput="this.value = this.value.replace(/[^0-9]/g, ''); if(this.value !== '' && parseInt(this.value) > parseInt(this.max)) this.value = this.max;">
+                                    </label>
                                 </div>
                             </div>
                             
@@ -457,7 +520,7 @@
                                 <label style="font-size:0.9em; cursor:pointer;">
                                     <input type="checkbox" id="act-use-latch" style="vertical-align:middle;"> 🧲 한 번 켜지면 계속 유지 (래치)
                                 </label>
-                                <div class="ink-2" style="margin-top:8px; font-size:0.9em;">
+                                <div class="ink-2" id="act-delay-row" style="margin-top:8px; font-size:0.9em;">
                                     ⏱️ 이상 발생 후 <input type="number" id="act-delay" placeholder="0" style="width:50px; padding:2px;"> 초 뒤에 작동 시작 (0이면 즉시)
                                 </div>
                             </div>
@@ -493,6 +556,24 @@
             </div>
         </section>
     </main>
+
+    <dialog id="editDialog" aria-labelledby="editTitle">
+        <form method="dialog" id="editForm" onsubmit="return false;">
+            <div class="dlg-head">
+                <div>
+                    <div class="ink-3" id="editKicker" style="font-size:12px;"></div>
+                    <h3 id="editTitle">장치 수정</h3>
+                </div>
+                <button type="button" class="icon-btn" onclick="closeEditor()" aria-label="닫기">닫기</button>
+            </div>
+            <div id="editBody"></div>
+            <div class="dlg-foot">
+                <span class="ink-3" id="editHint" style="font-size:12px;"></span>
+                <button type="button" class="icon-btn" onclick="closeEditor()">취소</button>
+                <button type="button" class="form-btn" style="width:auto;" onclick="saveEditor()">저장</button>
+            </div>
+        </form>
+    </dialog>
 
     <script>
         const socket = io();
@@ -1009,6 +1090,8 @@
             } else {
                 uOptions.style.display = 'block';
             }
+            // The timer's duration already is its delay
+            document.getElementById('act-delay-row').style.display = (type === 'virtual_timer') ? 'none' : '';
 
             if (type.startsWith('virtual_')) {
                 physConfig.style.display = 'none';
@@ -1020,7 +1103,7 @@
                 pinSelect.appendChild(option);
 
                 if (type === 'virtual_timer') {
-                    vParams.innerHTML = '<input type="number" class="dynamic-input" id="v-duration" placeholder="지속 시간 (예: 5 입력 시 5초 연속 이상일 때 트리거)">';
+                    vParams.innerHTML = '<label class="field-label" for="v-duration">지속 시간 (초)</label><input type="number" class="dynamic-input" id="v-duration" min="0" placeholder="예: 5 → 5초 연속 이상이면 작동">';
                 } else if (type === 'virtual_webhook') {
                     vParams.innerHTML = `
                         <select class="dynamic-input" id="v-messenger" style="margin-bottom: 5px; width: 100%;">
@@ -1187,7 +1270,10 @@
             }
 
             if (type.startsWith('virtual_')) {
-                if (type === 'virtual_timer') extraParams['duration'] = parseInt(document.getElementById('v-duration').value || 5);
+                if (type === 'virtual_timer') {
+                    extraParams['duration'] = parseInt(document.getElementById('v-duration').value || 5);
+                    extraParams['delay'] = 0;
+                }
                 if (type === 'virtual_webhook') {
                     extraParams['messenger'] = document.getElementById('v-messenger').value;
                     extraParams['url'] = document.getElementById('v-url').value;
@@ -1228,6 +1314,7 @@
         socket.on('update_device_list', function(payload) {
             const sensors = payload.sensors || [];
             const actuators = payload.actuators || [];
+            deviceCache = { sensors, actuators };
             
             const activeSensorNames = sensors.map(s => s.name);
             removeStaleCards(activeSensorNames);
@@ -1293,7 +1380,7 @@
                     <td style="font-weight:bold;">${sen.name}</td>
                     <td>${sen.data_type || 'N/A'} <span class="ink-3" style="font-size:0.9em;">(${sen.unit || '-'})</span></td>
                     <td class="ink-2" style="font-family:ui-monospace,monospace; font-size:0.95em;">${pinDisplay}</td>
-                    <td>${rulesAndAIColumn}</td> <td><button class="delete-btn" onclick="deleteDevice('sensor', ${sen.id})">❌ 삭제</button></td>
+                    <td>${rulesAndAIColumn}</td> <td class="row-actions"><button class="edit-btn" onclick="openSensorEditor(${sen.id})">수정</button><button class="delete-btn" onclick="deleteDevice('sensor', ${sen.id})">삭제</button></td>
                 </tr>`;
                 
                 linkOptionsHTML += `<option value="${sen.id}">${sen.name}</option>`;
@@ -1326,7 +1413,10 @@
                         conditionOut = '-';
                     }
                 } else {
-                    conditionOut = `[${act.trigger_dir}] 평상:${act.normal_val} → 이상:${act.low_val}~${act.high_val}`;
+                    const lowOn = act.trigger_dir !== 'HIGH', highOn = act.trigger_dir !== 'LOW';
+                    conditionOut = `<span class="rule rule-normal">평상 ${act.normal_val}</span>`
+                        + (lowOn ? ` <span class="rule rule-low">▼미만 ${act.low_val}</span>` : '')
+                        + (highOn ? ` <span class="rule rule-high">▲초과 ${act.high_val}</span>` : '');
                 }
 
                 let dlArr = [];
@@ -1343,6 +1433,10 @@
                     typeBadge = '<span class="badge badge-i2c">가상 카운터</span>';
                 } else if (act.control_type === 'virtual_latch') {
                     typeBadge = '<span class="badge badge-i2c">가상 래치</span>';
+                } else if (act.control_type === 'virtual_timer') {
+                    typeBadge = '<span class="badge badge-i2c">가상 타이머</span>';
+                } else if (act.control_type === 'virtual_webhook') {
+                    typeBadge = '<span class="badge badge-i2c">가상 웹훅</span>';
                 }
                 
                 actTableHTML += `<tr>
@@ -1351,7 +1445,7 @@
                     <td class="ink-2" style="font-size:0.9em;">${conditionOut}</td>
                     <td class="ink-warn" style="font-size:0.9em; font-weight:bold;">${delayLatch}</td>
                     <td>${linkedName}</td>
-                    <td><button class="delete-btn" onclick="deleteDevice('actuator', ${act.id})">❌ 삭제</button></td>
+                    <td class="row-actions"><button class="edit-btn" onclick="openActuatorEditor(${act.id})">수정</button><button class="delete-btn" onclick="deleteDevice('actuator', ${act.id})">삭제</button></td>
                 </tr>`;
             });
             document.getElementById('actuatorListTable').innerHTML = actTableHTML;
@@ -1379,19 +1473,182 @@
             if (tabId === 'tab-dashboard') requestLayout();
         }
 
-        function updateActuatorDirUI() {
-            const dir = document.getElementById('act-dir').value;
-            const lowInput = document.getElementById('act-low');
-            const highInput = document.getElementById('act-high');
-
-            if (dir === 'BOTH') {
-                lowInput.disabled = false; highInput.disabled = false;
-            } else if (dir === 'HIGH') {
-                lowInput.disabled = true; lowInput.value = '0'; highInput.disabled = false; true; highInput.value = '';
-            } else if (dir === 'LOW') {
-                lowInput.disabled = false; lowInput.value = ''; highInput.disabled = true; highInput.value = '0';
-            }
+        function updateActuatorDirUI(prefix) {
+            prefix = prefix || 'act';
+            const dir = document.getElementById(`${prefix}-dir`).value;
+            const lowInput = document.getElementById(`${prefix}-low`);
+            const highInput = document.getElementById(`${prefix}-high`);
+            // Unused side is locked to 0 and dimmed
+            lowInput.disabled = (dir === 'HIGH');
+            highInput.disabled = (dir === 'LOW');
+            if (lowInput.disabled) lowInput.value = '0';
+            if (highInput.disabled) highInput.value = '0';
+            lowInput.closest('.out-field').classList.toggle('unused', lowInput.disabled);
+            highInput.closest('.out-field').classList.toggle('unused', highInput.disabled);
         }
+
+        /* ---------- edit existing devices ---------- */
+        let deviceCache = { sensors: [], actuators: [] };
+        let editing = null;
+        const escAttr = v => escapeHtml(v === null || v === undefined ? '' : v);
+
+        function outFieldsHTML(prefix, act, isDigitalOut) {
+            const max = isDigitalOut ? 1 : 255;
+            const ph = isDigitalOut ? '0 또는 1' : '0~255';
+            const dir = act.trigger_dir || 'BOTH';
+            const input = (id, val) => `<input type="number" id="${prefix}-${id}" min="0" max="${max}" step="1" placeholder="${ph}" value="${escAttr(val)}"
+                oninput="this.value=this.value.replace(/[^0-9]/g,''); if(this.value!=='' && +this.value>${max}) this.value='${max}';">`;
+            return `
+                <div class="form-group">
+                    <label class="field-label" for="${prefix}-dir">동작 조건</label>
+                    <select id="${prefix}-dir" onchange="updateActuatorDirUI('${prefix}')">
+                        <option value="BOTH" ${dir === 'BOTH' ? 'selected' : ''}>하한 미만 · 상한 초과 모두</option>
+                        <option value="HIGH" ${dir === 'HIGH' ? 'selected' : ''}>상한 초과일 때만</option>
+                        <option value="LOW" ${dir === 'LOW' ? 'selected' : ''}>하한 미만일 때만</option>
+                    </select>
+                </div>
+                <div class="out-grid">
+                    <label class="out-field out-normal"><span class="out-label"><i></i>평상시 출력</span>${input('normal', act.normal_val)}</label>
+                    <label class="out-field out-low"><span class="out-label"><i></i>▼ 하한 미만일 때</span>${input('low', act.low_val)}</label>
+                    <label class="out-field out-high"><span class="out-label"><i></i>▲ 상한 초과일 때</span>${input('high', act.high_val)}</label>
+                </div>`;
+        }
+
+        function openSensorEditor(id) {
+            const sen = deviceCache.sensors.find(x => x.id === id);
+            if (!sen) return;
+            editing = { type: 'sensor', id };
+            const isDigital = sen.protocol === 'digital';
+            const isAnalog = sen.protocol === 'analog';
+            const v = k => escAttr(sen[k]);
+            document.getElementById('editKicker').textContent = `센서 #${sen.id} · ${PROTOCOL_LABEL[sen.protocol] || sen.protocol} · ${pinLabelMap[sen.pin] || sen.pin}`;
+            document.getElementById('editTitle').textContent = sen.name;
+            document.getElementById('editHint').textContent = '이름·프로토콜·핀은 삭제 후 다시 등록해야 바꿀 수 있어요.';
+            let html = `
+                <div class="form-row-inner">
+                    <div class="form-group"><label class="field-label" for="ed-type">데이터 종류</label><input id="ed-type" value="${v('data_type')}"></div>
+                    <div class="form-group"><label class="field-label" for="ed-unit">단위</label><input id="ed-unit" value="${v('unit')}"></div>
+                </div>`;
+            if (isDigital) {
+                const trig = (sen.threshold_high === 0) ? 0 : 1;
+                html += `
+                <div class="form-group"><label class="field-label" for="ed-trigger">이상으로 판단할 상태</label>
+                    <select id="ed-trigger">
+                        <option value="1" ${trig === 1 ? 'selected' : ''}>1 (HIGH)일 때</option>
+                        <option value="0" ${trig === 0 ? 'selected' : ''}>0 (LOW)일 때</option>
+                    </select></div>`;
+            } else {
+                html += `
+                <div class="form-row-inner">
+                    <div class="form-group"><label class="field-label thr-low" for="ed-low">▼ 하한 (이 값 미만이면 이상)</label><input type="number" step="any" id="ed-low" value="${v('threshold_low')}" placeholder="비우면 사용 안 함"></div>
+                    <div class="form-group"><label class="field-label thr-high" for="ed-high">▲ 상한 (이 값 초과면 이상)</label><input type="number" step="any" id="ed-high" value="${v('threshold_high')}" placeholder="비우면 사용 안 함"></div>
+                </div>`;
+                if (isAnalog) {
+                    html += `
+                <div class="form-row-inner">
+                    <div class="form-group"><label class="field-label" for="ed-mult">보정 곱 (a)</label><input type="number" step="any" id="ed-mult" value="${sen.multiplier ?? 1}"></div>
+                    <div class="form-group"><label class="field-label" for="ed-off">보정 합 (b)</label><input type="number" step="any" id="ed-off" value="${sen.offset ?? 0}"></div>
+                </div>
+                <div class="ink-3" style="font-size:12px;">표시값 = a × 원본값 + b</div>`;
+                }
+            }
+            document.getElementById('editBody').innerHTML = html;
+            document.getElementById('editDialog').showModal();
+        }
+
+        function openActuatorEditor(id) {
+            const act = deviceCache.actuators.find(x => x.id === id);
+            if (!act) return;
+            editing = { type: 'actuator', id, control_type: act.control_type };
+            let extra = {};
+            try { extra = JSON.parse(act.extra_params || '{}'); } catch (e) {}
+            const isVirtual = act.control_type.startsWith('virtual_');
+            const typeLabel = { digital_out: '디지털 출력', pwm: 'PWM 출력', virtual_counter: '가상 카운터', virtual_timer: '가상 타이머', virtual_latch: '가상 래치', virtual_webhook: '가상 웹훅' }[act.control_type] || act.control_type;
+            document.getElementById('editKicker').textContent = `출력 #${act.id} · ${typeLabel} · ${isVirtual ? '가상' : (pinLabelMap[act.pin] || act.pin)}`;
+            document.getElementById('editTitle').textContent = act.name;
+            document.getElementById('editHint').textContent = '저장하면 이 장치의 타이머·래치·카운터가 초기화돼요.';
+
+            const sensorOpts = deviceCache.sensors.map(sn =>
+                `<option value="${sn.id}" ${sn.id === act.linked_sensor_id ? 'selected' : ''}>${escapeHtml(sn.name)}</option>`).join('');
+            let html = `
+                <div class="form-row-inner">
+                    <div class="form-group"><label class="field-label" for="ed-name">이름</label><input id="ed-name" value="${escAttr(act.name)}"></div>
+                    <div class="form-group"><label class="field-label" for="ed-link">연동 센서</label><select id="ed-link">${sensorOpts}</select></div>
+                </div>`;
+            if (!isVirtual) {
+                html += outFieldsHTML('ed', act, act.control_type === 'digital_out');
+            } else if (act.control_type === 'virtual_timer') {
+                html += `<div class="form-group"><label class="field-label" for="ed-duration">지속 시간 (초)</label><input type="number" min="0" id="ed-duration" value="${extra.duration ?? 5}"></div>`;
+            } else if (act.control_type === 'virtual_webhook') {
+                const m = extra.messenger || 'discord';
+                html += `
+                <div class="form-group"><label class="field-label" for="ed-messenger">메신저</label>
+                    <select id="ed-messenger">
+                        <option value="discord" ${m === 'discord' ? 'selected' : ''}>Discord</option>
+                        <option value="slack" ${m === 'slack' ? 'selected' : ''}>Slack</option>
+                        <option value="custom" ${m === 'custom' ? 'selected' : ''}>Custom (일반 POST)</option>
+                    </select></div>
+                <div class="form-group"><label class="field-label" for="ed-url">웹훅 URL</label><input id="ed-url" value="${escAttr(extra.url)}"></div>`;
+            }
+            if (act.control_type !== 'virtual_counter' && act.control_type !== 'virtual_latch') {
+                html += `
+                <div class="opt-box">
+                    <label style="cursor:pointer;"><input type="checkbox" id="ed-latch" ${extra.latch ? 'checked' : ''}> 한 번 켜지면 계속 유지 (래치)</label>
+                    ${act.control_type === 'virtual_timer' ? '' : `<div class="ink-2" style="margin-top:8px;">이상 발생 후 <input type="number" min="0" id="ed-delay" value="${extra.delay || 0}" style="width:60px;"> 초 뒤에 작동 (0이면 즉시)</div>`}
+                </div>`;
+            }
+            document.getElementById('editBody').innerHTML = html;
+            if (!isVirtual) updateActuatorDirUI('ed');
+            document.getElementById('editDialog').showModal();
+        }
+
+        function closeEditor() {
+            editing = null;
+            document.getElementById('editDialog').close();
+        }
+
+        function saveEditor() {
+            if (!editing) return;
+            const val = id => { const el = document.getElementById(id); return el ? el.value : undefined; };
+            if (editing.type === 'sensor') {
+                const data = { id: editing.id, data_type: val('ed-type'), unit: val('ed-unit') };
+                if (document.getElementById('ed-trigger')) {
+                    data.threshold_high = parseInt(val('ed-trigger'));
+                } else {
+                    data.threshold_low = val('ed-low');
+                    data.threshold_high = val('ed-high');
+                    if (data.threshold_low !== '' && data.threshold_high !== '' && parseFloat(data.threshold_low) > parseFloat(data.threshold_high)) {
+                        alert('하한이 상한보다 클 수 없어요.');
+                        return;
+                    }
+                    if (document.getElementById('ed-mult')) {
+                        data.multiplier = val('ed-mult');
+                        data.offset = val('ed-off');
+                    }
+                }
+                socket.emit('update_sensor_request', data);
+            } else {
+                const act = deviceCache.actuators.find(x => x.id === editing.id) || {};
+                let extra = {};
+                try { extra = JSON.parse(act.extra_params || '{}'); } catch (e) {}
+                const data = { id: editing.id, name: val('ed-name'), linked_sensor_id: val('ed-link') };
+                if (document.getElementById('ed-normal')) {
+                    data.normal_val = val('ed-normal') || 0;
+                    data.low_val = val('ed-low') || 0;
+                    data.high_val = val('ed-high') || 0;
+                    data.trigger_dir = val('ed-dir');
+                }
+                if (document.getElementById('ed-latch')) extra.latch = document.getElementById('ed-latch').checked;
+                if (document.getElementById('ed-delay')) extra.delay = parseInt(val('ed-delay') || 0);
+                if (document.getElementById('ed-duration')) { extra.duration = parseInt(val('ed-duration') || 5); extra.delay = 0; }
+                if (document.getElementById('ed-url')) { extra.url = val('ed-url'); extra.messenger = val('ed-messenger'); }
+                data.extra_params = JSON.stringify(extra);
+                socket.emit('update_actuator_request', data);
+            }
+            closeEditor();
+        }
+
+        socket.on('device_update_error', data => alert(data.message || '수정하지 못했어요.'));
 
         let availableI2CProfiles = {};
 

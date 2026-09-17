@@ -6,6 +6,7 @@ File         : web_server.py
 Purpose      : Manage WebUI and broadcast data to frontend
 ===================================================================
 """
+import json
 from arduino.app_utils import *
 from arduino.app_bricks.web_ui import WebUI
 from sensors import load_sensor_profiles
@@ -31,6 +32,8 @@ class WebServer:
         self.ui.on_message('request_device_list', self.on_request_device_list)
         self.ui.on_message('add_sensor_request', self.on_add_sensor)
         self.ui.on_message('add_actuator_request', self.on_add_actuator)
+        self.ui.on_message('update_sensor_request', self.on_update_sensor)
+        self.ui.on_message('update_actuator_request', self.on_update_actuator)
         self.ui.on_message('delete_device_request', self.on_delete_device)
         self.ui.on_message('change_sensitivity', self.on_change_sensitivity)
         self.ui.on_message('request_i2c_profiles', self.on_request_i2c_profiles)
@@ -74,6 +77,69 @@ class WebServer:
             data['extra_params']
         )
         # refresh frontend
+        self.ui.send_message('device_list_updated', {'type': 'actuator'})
+
+    @staticmethod
+    def _num(value, cast=float):
+        # Empty or invalid input becomes None (NULL in SQL)
+        if value is None or value == '':
+            return None
+        try:
+            return cast(value)
+        except (TypeError, ValueError):
+            return None
+
+    def on_update_sensor(self, sid, data):
+        dbg(f"[DEBUG] [WebServer] Update Sensor: {data}")
+        try:
+            sensor_id = int(data.get('id'))
+        except (TypeError, ValueError):
+            return
+        fields = {}
+        for key in ('data_type', 'unit'):
+            if key in data:
+                fields[key] = str(data[key] or '')
+        for key in ('threshold_low', 'threshold_high'):
+            if key in data:
+                fields[key] = self._num(data[key])
+        for key, default in (('multiplier', 1.0), ('offset', 0.0)):
+            if key in data:
+                val = self._num(data[key])
+                fields[key] = default if val is None else val
+        low, high = fields.get('threshold_low'), fields.get('threshold_high')
+        if low is not None and high is not None and low > high:
+            self.ui.send_message('device_update_error', {'type': 'sensor', 'id': sensor_id, 'message': '하한이 상한보다 클 수 없어요.'})
+            return
+        self.db.update_sensor(sensor_id, fields)
+        self.ui.send_message('device_list_updated', {'type': 'sensor'})
+
+    def on_update_actuator(self, sid, data):
+        dbg(f"[DEBUG] [WebServer] Update Actuator: {data}")
+        try:
+            act_id = int(data.get('id'))
+        except (TypeError, ValueError):
+            return
+        fields = {}
+        if data.get('name'):
+            fields['name'] = str(data['name'])
+        for key in ('normal_val', 'low_val', 'high_val'):
+            if key in data:
+                val = self._num(data[key], lambda v: int(float(v)))
+                fields[key] = max(0, min(255, val)) if val is not None else 0
+        if data.get('trigger_dir') in ('BOTH', 'HIGH', 'LOW'):
+            fields['trigger_dir'] = data['trigger_dir']
+        if 'linked_sensor_id' in data:
+            linked = self._num(data['linked_sensor_id'], int)
+            if linked is not None:
+                fields['linked_sensor_id'] = linked
+        if 'extra_params' in data:
+            fields['extra_params'] = data['extra_params'] if isinstance(data['extra_params'], str) else json.dumps(data['extra_params'])
+        self.db.update_actuator(act_id, fields)
+        # restart timers, latches and counters with the new rules
+        mem = self.actuator_mem.get(str(act_id)) if self.actuator_mem is not None else None
+        if mem is not None:
+            # reset in place so the main loop never sees a missing key
+            mem.update({'timer_start': 0, 'latched': False, 'count': 0, 'status_text': '', 'prev_active': False})
         self.ui.send_message('device_list_updated', {'type': 'actuator'})
 
     def broadcast_data(self, rows, is_anomaly):
